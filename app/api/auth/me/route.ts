@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { memberHasPro } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { readSession } from "@/lib/session";
 
@@ -10,7 +11,6 @@ export async function GET() {
   const user = await prisma.user.findUnique({
     where: { id: session.sub },
     include: {
-      licenseKeys: { where: { status: "active" }, take: 1 },
       facebook: true,
     },
   });
@@ -23,7 +23,7 @@ export async function GET() {
       name: user.name,
       email: user.email,
       plan: user.plan,
-      pro: user.plan === "pro" && user.licenseKeys.length > 0,
+      pro: await memberHasPro(user.id, user.plan),
     },
     facebook: user.facebook ? { name: user.facebook.name } : null,
   });

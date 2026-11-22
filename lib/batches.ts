@@ -280,7 +280,12 @@ async function writeMedia(
   return relative;
 }
 
-export async function saveBatch(userId: string, input: BatchInput, pageOwnerId = userId) {
+export async function saveBatch(
+  userId: string,
+  input: BatchInput,
+  pageOwnerIds: string | string[] = userId,
+) {
+  const owners = Array.isArray(pageOwnerIds) ? pageOwnerIds : [pageOwnerIds];
   const image = input.image && input.image.size > 0 ? input.image : null;
   const video = input.video && input.video.size > 0 ? input.video : null;
   const cover = input.cover && input.cover.size > 0 ? input.cover : null;
@@ -315,7 +320,7 @@ export async function saveBatch(userId: string, input: BatchInput, pageOwnerId =
     uniqueIds.length === 0
       ? []
       : await prisma.page.findMany({
-          where: { id: { in: uniqueIds }, account: { userId: pageOwnerId } },
+          where: { id: { in: uniqueIds }, account: { userId: { in: owners } } },
         });
   if (pages.length !== uniqueIds.length) {
     throw new Error("Có Page không còn trong danh sách admin đã gắn.");

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminEmail } from "@/lib/admin";
+import { isAdminEmail, syncAdminRoleByEmail } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { sealSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session-token";
@@ -47,6 +47,10 @@ export async function POST(request: Request) {
       plan: "free",
     },
   });
+
+  if (isAdminEmail(email)) {
+    await syncAdminRoleByEmail(user.id, email);
+  }
 
   const token = await sealSession({ role: "member", sub: user.id });
   const response = NextResponse.json({ ok: true });

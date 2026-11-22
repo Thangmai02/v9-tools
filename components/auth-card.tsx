@@ -3,9 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { BrandMark } from "@/components/top-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { buttonClass, ErrorNote, fieldClass, labelClass, linkClass, cardClass } from "@/components/ui";
+import { buttonClass, ErrorNote, fieldClass, labelClass, linkClass } from "@/components/ui";
 
 export function AuthShell({
   title,
@@ -19,26 +18,67 @@ export function AuthShell({
   footer: ReactNode;
 }) {
   return (
-    <main className="relative z-[1] min-h-screen lg:grid lg:grid-cols-2">
-      <div className="absolute right-4 top-4 z-10">
+    <main className="auth-stage relative z-[1] flex min-h-screen items-center justify-center px-4 py-10 sm:px-6">
+      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-5">
         <ThemeToggle />
       </div>
-      <section className="flex flex-col justify-center border-b border-line bg-card/40 px-6 py-10 backdrop-blur-[2px] sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-16">
-        <div className="mx-auto w-full max-w-md lg:mx-0">
-          <BrandMark />
-          <h1 className="mt-8 text-3xl font-semibold tracking-tight text-ink lg:text-4xl">{title}</h1>
-          <p className="mt-3 text-sm leading-6 text-muted sm:text-base sm:leading-7">{hint}</p>
-          <p className="mt-8 text-sm leading-6 text-muted">
-            MAI VĂN THĂNG
-          </p>
-        </div>
-      </section>
-      <section className="flex items-center px-4 py-8 sm:px-8 lg:px-12 lg:py-16">
-        <div className={`${cardClass} mx-auto w-full max-w-md p-6 sm:p-8`}>
-          {children}
-          <div className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-4 text-sm leading-6 text-muted">
-            {footer}
+
+      <div className="auth-sky" aria-hidden>
+        <span className="auth-haze auth-haze-a" />
+        <span className="auth-haze auth-haze-b" />
+        <span className="auth-horizon" />
+        <span className="auth-sun" />
+        <span className="auth-sun-ray auth-sun-ray-a" />
+        <span className="auth-sun-ray auth-sun-ray-b" />
+        <span className="auth-sun-ray auth-sun-ray-c" />
+        <span className="auth-cloud auth-cloud-a" />
+        <span className="auth-cloud auth-cloud-b" />
+        <span className="auth-cloud auth-cloud-c" />
+        <span className="auth-moon">
+          <span className="auth-moon-crater auth-moon-crater-a" />
+          <span className="auth-moon-crater auth-moon-crater-b" />
+          <span className="auth-moon-crater auth-moon-crater-c" />
+        </span>
+        <span className="auth-stars" />
+        <span className="auth-stars auth-stars-mid" />
+        <span className="auth-stars auth-stars-far" />
+        <span className="auth-shoot auth-shoot-a" />
+        <span className="auth-shoot auth-shoot-b" />
+        <span className="auth-sparkle auth-sparkle-a" />
+        <span className="auth-sparkle auth-sparkle-b" />
+        <span className="auth-sparkle auth-sparkle-c" />
+      </div>
+
+      <section className="auth-card relative z-10 w-full max-w-[26rem] p-6 text-center sm:p-8">
+        <span className="auth-card-sheen" aria-hidden />
+        <div className="relative flex flex-col items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/v9-tools-logo.png"
+            alt=""
+            className="auth-logo h-14 w-14 rounded-2xl object-cover"
+          />
+          <div className="min-w-0">
+            <p className="auth-brand text-[1.85rem] font-semibold leading-none tracking-[-0.04em] text-ink">
+              V9 Tools
+            </p>
+            <p className="auth-byline mt-2.5 inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+              MAI VĂN THĂNG
+            </p>
           </div>
+        </div>
+
+        <h1 className="relative mt-7 text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">
+          {title}
+        </h1>
+        <p className="relative mx-auto mt-2 max-w-[20rem] text-sm leading-6 text-muted">
+          {hint}
+        </p>
+
+        <div className="relative mt-6 text-left">{children}</div>
+
+        <div className="relative mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-line/70 pt-4 text-sm leading-6 text-muted">
+          {footer}
         </div>
       </section>
     </main>
@@ -86,7 +126,7 @@ export function LoginForm() {
   return (
     <AuthShell
       title="Đăng nhập"
-      hint="Đăng nhập để mở tab Tool."
+      hint="Đăng nhập để mở khóa nhiều tính năng hơn."
       footer={
         <>
           Chưa có tài khoản?{" "}

@@ -45,7 +45,7 @@ export async function revokePro(userId: string) {
     }),
     prisma.user.update({
       where: { id: userId },
-      data: { plan: "free" },
+      data: { plan: "free", facebookKeyId: null },
     }),
   ]);
 }

@@ -9,8 +9,9 @@ const items = [
   {
     id: "post",
     href: "/tool",
-    label: "Đăng bài",
+    label: "Auto Đăng Bài",
     hint: "Soạn và đăng lên Fanpage",
+    Icon: AutoPostIcon,
   },
 ] as const;
 
@@ -52,7 +53,14 @@ export function ToolShell({
   }
 
   return (
-    <TopBar email={email} name={name} avatarUrl={avatarUrl} pro={pro} admin={admin}>
+    <TopBar
+      email={email}
+      name={name}
+      avatarUrl={avatarUrl}
+      pro={pro}
+      admin={admin}
+      adminNav={admin}
+    >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         <aside
           className={`shrink-0 border-b border-line bg-card/55 backdrop-blur-[2px] transition-[width] duration-200 lg:border-b-0 lg:border-r lg:border-line ${
@@ -78,6 +86,7 @@ export function ToolShell({
             <nav className="mt-3 flex gap-1 overflow-x-auto px-3 pb-4 lg:flex-col lg:overflow-y-auto">
               {items.map((item) => {
                 const on = item.id === active;
+                const Icon = item.Icon;
                 return (
                   <Link
                     key={item.id}
@@ -94,7 +103,7 @@ export function ToolShell({
                         on ? "bg-white/15" : "bg-paper ring-1 ring-line"
                       }`}
                     >
-                      <PostIcon className={on ? "text-white" : "text-moss"} />
+                      <Icon className={on ? "text-white" : "text-moss"} />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold">{item.label}</span>
@@ -110,6 +119,7 @@ export function ToolShell({
             <nav className="mt-3 hidden flex-col items-center gap-2 px-2 pb-4 lg:flex">
               {items.map((item) => {
                 const on = item.id === active;
+                const Icon = item.Icon;
                 return (
                   <Link
                     key={item.id}
@@ -120,7 +130,7 @@ export function ToolShell({
                       on ? "bg-moss text-white shadow-[0_6px_16px_rgba(15,110,86,0.28)]" : "text-ink hover:bg-paper"
                     }`}
                   >
-                    <PostIcon />
+                    <Icon />
                   </Link>
                 );
               })}
@@ -133,12 +143,17 @@ export function ToolShell({
   );
 }
 
-function PostIcon({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+function AutoPostIcon({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
-      <path strokeLinejoin="round" d="M4.5 5.5h8.2A2.3 2.3 0 0 1 15 7.8v6.7a2.3 2.3 0 0 1-2.3 2.3H4.5V5.5Z" />
-      <path strokeLinecap="round" d="M7 9h5.5M7 12h3.5" />
-      <path strokeLinejoin="round" d="m12.2 4.2 2.6 2.6" />
+      <rect x="3.2" y="5.2" width="8.2" height="10.2" rx="1.6" opacity="0.45" />
+      <rect x="5.4" y="3.6" width="8.2" height="10.2" rx="1.6" />
+      <path strokeLinecap="round" d="M7.6 7.4h3.8M7.6 10h2.6" />
+      <path
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        d="M13.2 11.2h3.4l-1.35 1.35M16.6 11.2l-1.35-1.35"
+      />
     </svg>
   );
 }

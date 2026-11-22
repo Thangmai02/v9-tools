@@ -49,6 +49,9 @@ export function statusLabel(status: string) {
     skipped: "Không bình luận",
     free: "Thường",
     pro: "Pro",
+    success: "Thành công",
+    failed: "Lỗi",
+    pending: "Chờ",
   };
   return labels[status] ?? status;
 }
@@ -94,13 +97,17 @@ export function Badge({
   tone,
   children,
 }: {
-  tone: "amber" | "pine";
+  tone: "amber" | "pine" | "success" | "danger";
   children: ReactNode;
 }) {
   const toneClass =
     tone === "amber"
       ? "bg-amber/10 text-amber ring-1 ring-inset ring-amber/25"
-      : "bg-pine/10 text-pine ring-1 ring-inset ring-pine/20";
+      : tone === "success"
+        ? "bg-moss/10 text-moss ring-1 ring-inset ring-moss/25"
+        : tone === "danger"
+          ? "bg-danger/10 text-danger ring-1 ring-inset ring-danger/25"
+          : "bg-pine/10 text-pine ring-1 ring-inset ring-pine/20";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${toneClass}`}

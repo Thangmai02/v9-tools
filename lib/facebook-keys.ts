@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { userHasAdminRole } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { connectFacebook } from "@/lib/sync-pages";
@@ -110,6 +111,15 @@ export async function assignFacebookKey(userId: string, facebookKeyId: string | 
   if (facebookKeyId) {
     const key = await prisma.facebookKey.findUnique({ where: { id: facebookKeyId } });
     if (!key) throw new Error("Không thấy mã khóa.");
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error("Không thấy tài khoản.");
+    const license = await prisma.licenseKey.findFirst({
+      where: { userId, status: "active" },
+    });
+    const isPro = user.plan === "pro" && Boolean(license);
+    if (!isPro && !userHasAdminRole(user)) {
+      throw new Error("Chỉ gán mã Facebook cho tài khoản đã nâng Pro.");
+    }
   }
   return prisma.user.update({
     where: { id: userId },
@@ -117,20 +127,30 @@ export async function assignFacebookKey(userId: string, facebookKeyId: string | 
   });
 }
 
-export async function resolvePageSourceUserId(memberId: string) {
+/**
+ * Host user chứa sở hữu Page Facebook mà member được dùng.
+ * Admin: mọi mã khóa. Tài khoản thường: chỉ mã admin đã gán.
+ */
+export async function resolvePageOwnerIds(memberId: string) {
   const member = await prisma.user.findUnique({
     where: { id: memberId },
     include: { facebookKey: true },
   });
-  if (member?.facebookKey?.hostUserId) return member.facebookKey.hostUserId;
+  if (!member) return [] as string[];
 
-  // Tạm giữ bàn cũ nếu chưa gán mã mới.
-  const desk = await prisma.user.findUnique({ where: { email: "ban@local" } });
-  const hasDeskPages = desk
-    ? await prisma.page.count({ where: { account: { userId: desk.id } } })
-    : 0;
-  if (desk && hasDeskPages > 0) return desk.id;
-  return null;
+  if (userHasAdminRole(member)) {
+    const keys = await prisma.facebookKey.findMany({ select: { hostUserId: true } });
+    return [...new Set(keys.map((key) => key.hostUserId))];
+  }
+
+  if (member.facebookKey?.hostUserId) return [member.facebookKey.hostUserId];
+  return [];
+}
+
+/** Giữ API cũ: một host (admin lấy mã mới nhất nếu chưa gán). */
+export async function resolvePageSourceUserId(memberId: string) {
+  const owners = await resolvePageOwnerIds(memberId);
+  return owners[0] ?? null;
 }
 
 export function maskToken() {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireProUser } from "@/lib/auth";
-import { resolvePageSourceUserId } from "@/lib/facebook-keys";
+import { resolvePageOwnerIds } from "@/lib/facebook-keys";
 import { readBatchFields, saveBatch } from "@/lib/batches";
 
 export const runtime = "nodejs";
@@ -37,8 +37,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
   const user = gate.user;
-  const sourceUserId = await resolvePageSourceUserId(user.id);
-  if (!sourceUserId) {
+  const pageOwnerIds = await resolvePageOwnerIds(user.id);
+  if (pageOwnerIds.length === 0) {
     return NextResponse.json(
       { error: "Chưa có mã khóa Facebook. Admin cần thêm và gán mã." },
       { status: 400 },
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
           })),
         })),
       },
-      sourceUserId,
+      pageOwnerIds,
     );
     return NextResponse.json(saved);
   } catch (error) {

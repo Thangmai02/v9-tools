@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { syncAdminRoleByEmail, userHasAdminRole } from "@/lib/admin";
+import { ensureAdminPrivileges, syncAdminRoleByEmail, userHasAdminRole } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { clearSessionCookie, readSession } from "@/lib/session";
 
@@ -19,20 +19,29 @@ export async function resolveMember() {
     await clearSessionCookie();
     return null;
   }
-  if (user.role !== "admin" && (await syncAdminRoleByEmail(user.id, user.email))) {
-    user = { ...user, role: "admin" };
+  if (userHasAdminRole(user)) {
+    await ensureAdminPrivileges(user);
+    user = (await prisma.user.findUnique({ where: { id: user.id } })) ?? user;
   }
   return user;
 }
 
 export async function memberHasPro(userId: string, plan: string) {
-  if (plan !== "pro") return false;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, email: true, plan: true },
+  });
+  if (!user) return false;
+  // Admin luôn có đặc quyền cao nhất (Pro).
+  if (userHasAdminRole(user)) return true;
+  if (plan !== "pro" && user.plan !== "pro") return false;
   const license = await prisma.licenseKey.findFirst({
     where: { userId, status: "active" },
   });
   return Boolean(license);
 }
 
+/** Cần đăng nhập + Pro (admin tự có Pro). Tài khoản mới free chưa được dùng API đăng bài / Facebook. */
 export async function requireProUser() {
   const user = await resolveMember();
   if (!user) {
@@ -42,7 +51,7 @@ export async function requireProUser() {
     return {
       ok: false as const,
       status: 403,
-      error: "Tài khoản chưa được nâng Pro.",
+      error: "Tài khoản chưa được nâng Pro. Chờ admin cấp quyền.",
     };
   }
   return { ok: true as const, user };

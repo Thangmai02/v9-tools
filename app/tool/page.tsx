@@ -2,11 +2,10 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { userHasAdminRole } from "@/lib/admin";
 import { memberHasPro, resolveMember } from "@/lib/auth";
-import { resolvePageSourceUserId } from "@/lib/facebook-keys";
+import { resolvePageOwnerIds } from "@/lib/facebook-keys";
 import { parseStoredComments } from "@/lib/comment-items";
 import { Composer, type ComposerDraft } from "@/components/composer";
 import { ToolShell } from "@/components/tool-shell";
-import { Waiting } from "@/components/waiting";
 
 export const dynamic = "force-dynamic";
 
@@ -62,25 +61,22 @@ export default async function ToolPage({
   if (!user) redirect("/login");
   const query = await searchParams;
   const isPro = await memberHasPro(user.id, user.plan);
-  if (!isPro) {
-    return (
-      <Waiting
-        name={user.name}
-        email={user.email}
-        avatarUrl={user.avatarUrl}
-        admin={userHasAdminRole(user)}
-      />
-    );
-  }
+  const isAdmin = userHasAdminRole(user);
 
-  const sourceUserId = await resolvePageSourceUserId(user.id);
-  const [account, batches] = await Promise.all([
-    sourceUserId
-      ? prisma.facebookAccount.findUnique({
-          where: { userId: sourceUserId },
-          include: { pages: { orderBy: { name: "asc" } } },
+  const ownerIds = await resolvePageOwnerIds(user.id);
+  const [pages, accounts, batches] = await Promise.all([
+    ownerIds.length
+      ? prisma.page.findMany({
+          where: { account: { userId: { in: ownerIds } } },
+          orderBy: { name: "asc" },
         })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
+    ownerIds.length
+      ? prisma.facebookAccount.findMany({
+          where: { userId: { in: ownerIds } },
+          select: { name: true },
+        })
+      : Promise.resolve([]),
     prisma.postBatch.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -106,7 +102,11 @@ export default async function ToolPage({
     }),
   ]);
 
-  const pages = account?.pages ?? [];
+  const facebookName = isAdmin
+    ? accounts.length
+      ? `Admin · ${accounts.length} mã khóa`
+      : null
+    : accounts[0]?.name ?? null;
   let initialDraft: ComposerDraft | null = null;
   if (query.draft) {
     const row = await prisma.postBatch.findFirst({
@@ -153,13 +153,13 @@ export default async function ToolPage({
       email={user.email}
       name={user.name}
       avatarUrl={user.avatarUrl}
-      pro
-      admin={userHasAdminRole(user)}
+      pro={isPro}
+      admin={isAdmin}
       active="post"
     >
       <Composer
         key={initialDraft?.id ?? "new"}
-        facebookName={account?.name ?? null}
+        facebookName={facebookName}
         pages={pages.map((page) => ({
           id: page.id,
           name: page.name,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { isAdminEmail } from "@/lib/admin";
+import { isAdminEmail, syncAdminRoleByEmail } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { exchangeGoogleCode, fetchGoogleProfile } from "@/lib/google-auth";
 import { absoluteUrl } from "@/lib/request-origin";
@@ -57,6 +57,10 @@ export async function GET(request: Request) {
           plan: "free",
         },
       });
+    }
+
+    if (isAdminEmail(profile.email)) {
+      await syncAdminRoleByEmail(user.id, profile.email);
     }
 
     const token = await sealSession({ role: "member", sub: user.id });

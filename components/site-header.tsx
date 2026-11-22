@@ -39,7 +39,7 @@ export async function SiteHeader() {
           >
             <BrandMark />
           </Link>
-          <AppNav admin={session?.role === "admin"} />
+          <AppNav admin={admin || session?.role === "admin"} />
         </div>
         <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
           {email ? (

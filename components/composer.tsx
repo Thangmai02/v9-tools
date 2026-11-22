@@ -1349,7 +1349,7 @@ export function Composer({
                       Page đang lấy từ tài khoản <span className="font-semibold">{facebookName}</span>
                     </>
                   ) : (
-                    "Admin chưa gắn mã khóa, nên chưa có Page để đăng."
+                    "Chức năng tạm thời vô hiệu hóa với tài khoản của bạn"
                   )}
                 </p>
               </div>

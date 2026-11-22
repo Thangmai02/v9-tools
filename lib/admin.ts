@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { grantPro } from "@/lib/license";
 
 export function adminEmails() {
   return (process.env.ADMIN_EMAIL ?? "")
@@ -17,11 +18,33 @@ export function userHasAdminRole(user: { email: string; role: string } | null | 
   return user.role === "admin" || isAdminEmail(user.email);
 }
 
+/** Admin (email hoặc role) → luôn role admin + Pro (toàn quyền app). */
+export async function ensureAdminPrivileges(user: {
+  id: string;
+  email: string;
+  role: string;
+  plan: string;
+}) {
+  if (!userHasAdminRole(user)) return false;
+  if (user.role !== "admin") {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: "admin" },
+    });
+  }
+  const license = await prisma.licenseKey.findFirst({
+    where: { userId: user.id, status: "active" },
+  });
+  if (user.plan !== "pro" || !license) {
+    await grantPro(user.id);
+  }
+  return true;
+}
+
+/** Admin email → role admin + Pro. */
 export async function syncAdminRoleByEmail(userId: string, email: string) {
   if (!isAdminEmail(email)) return false;
-  await prisma.user.update({
-    where: { id: userId },
-    data: { role: "admin" },
-  });
-  return true;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return false;
+  return ensureAdminPrivileges(user);
 }
