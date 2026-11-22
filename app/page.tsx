@@ -51,16 +51,38 @@ export default function HomePage() {
           </div>
           <div className="rounded-2xl border border-line bg-card p-6 shadow-[0_10px_28px_rgba(27,25,20,0.05)]">
             <p className="text-sm font-semibold text-ink">Về chúng tôi</p>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              Chúng tôi làm công cụ cho nhóm nhỏ đăng bài lên Fanpage hằng ngày: lịch
-              đăng rõ, khoảng cách giữa các Page, và nhật ký Page nào đã lên. Mã kết
-              nối Facebook nằm ở trang admin, để nhân viên chỉ việc soạn nội dung.
-            </p>
-            <ul className="mt-5 space-y-3 text-sm leading-6 text-ink">
-              <li>Đăng chữ, link hoặc một ảnh.</li>
-              <li>Chọn nhiều Page trong một đợt.</li>
-              <li>Bài gửi công khai, ai xem Page cũng thấy.</li>
-            </ul>
+            <div className="mt-3 space-y-4 text-sm leading-7 text-muted">
+              <p>
+                Chúng tôi là một tập thể anh em trẻ, đầy nhiệt huyết, cùng làm việc và
+                phát triển trong lĩnh vực quảng cáo trên Facebook. Xuất phát từ những
+                trải nghiệm thực tế trong quá trình chạy quảng cáo, quản lý Fanpage và
+                vận hành công việc hằng ngày, chúng tôi hiểu rằng thời gian và hiệu suất
+                chính là yếu tố quan trọng để phát triển.
+              </p>
+              <p>
+                Với tinh thần{" "}
+                <strong className="font-semibold text-ink">
+                  không ngừng học hỏi, đổi mới và tối ưu
+                </strong>
+                , chúng tôi cùng nhau xây dựng{" "}
+                <strong className="font-semibold text-ink">V9 Tools</strong> – một công
+                cụ giúp đơn giản hóa các thao tác lặp lại, nâng cao hiệu suất và từng
+                bước chuyên nghiệp hóa quy trình làm việc.
+              </p>
+              <p>
+                Chúng tôi không chỉ muốn tạo ra một công cụ tiện ích, mà còn hướng đến
+                việc xây dựng một hệ thống làm việc{" "}
+                <strong className="font-semibold text-ink">
+                  thông minh hơn, nhanh hơn và hiệu quả hơn
+                </strong>
+                , để anh em có thể tập trung thời gian vào những ý tưởng, chiến lược và
+                mục tiêu lớn hơn.
+              </p>
+              <p className="font-semibold text-ink">
+                V9 Tools – Được xây dựng từ trải nghiệm thực tế, phát triển bằng đam mê
+                và tinh thần không ngừng cải tiến.
+              </p>
+            </div>
           </div>
         </section>
 

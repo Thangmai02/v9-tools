@@ -1,10 +1,11 @@
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { googleAuthUrl, googleConfigured } from "@/lib/google-auth";
+import { absoluteUrl } from "@/lib/request-origin";
 
 export async function GET(request: Request) {
   if (!googleConfigured()) {
-    return NextResponse.redirect(new URL("/login?google=missing", request.url));
+    return NextResponse.redirect(absoluteUrl(request, "/login?google=missing"));
   }
   const state = randomBytes(16).toString("hex");
   const response = NextResponse.redirect(googleAuthUrl(state));

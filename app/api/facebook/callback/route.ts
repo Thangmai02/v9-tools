@@ -2,10 +2,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireProUser } from "@/lib/auth";
 import { exchangeCode, exchangeLongLived, getMe } from "@/lib/facebook";
+import { absoluteUrl } from "@/lib/request-origin";
 import { connectFacebook } from "@/lib/sync-pages";
 
 function finish(request: Request, path: string) {
-  const response = NextResponse.redirect(new URL(path, request.url));
+  const response = NextResponse.redirect(absoluteUrl(request, path));
   response.cookies.set("fb_oauth_state", "", { path: "/", maxAge: 0 });
   return response;
 }

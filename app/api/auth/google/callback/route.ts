@@ -3,11 +3,11 @@ import { cookies } from "next/headers";
 import { isAdminEmail } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { exchangeGoogleCode, fetchGoogleProfile } from "@/lib/google-auth";
+import { absoluteUrl } from "@/lib/request-origin";
 import { sealSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session-token";
 
 function finish(request: Request, path: string) {
-  const url = new URL(path, request.url);
-  const response = NextResponse.redirect(url);
+  const response = NextResponse.redirect(absoluteUrl(request, path));
   response.cookies.set("google_oauth_state", "", { path: "/", maxAge: 0 });
   return response;
 }
