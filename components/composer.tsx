@@ -1405,7 +1405,7 @@ export function Composer({
                     className={fieldClass}
                     placeholder="Tìm Fanpage..."
                   />
-                  <div className="mt-2 flex justify-end">
+                  <div className="mt-2 flex justify-start">
                     <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-pine">
                       <input
                         type="checkbox"
