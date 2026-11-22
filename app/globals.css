@@ -1,0 +1,406 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: 243 239 230;
+  --ink: 27 25 20;
+  --muted: 107 100 91;
+  --line: 226 218 205;
+  --card: 255 253 248;
+  --surface: 255 255 255;
+  --pine: 15 110 86;
+  --pine-dark: 11 83 65;
+  --moss: 15 110 86;
+  --moss-dark: 11 83 65;
+  --amber: 138 75 8;
+  --danger: 159 45 45;
+  color-scheme: light;
+}
+
+.dark {
+  --paper: 12 11 10;
+  --ink: 244 240 232;
+  --muted: 168 160 148;
+  --line: 48 44 38;
+  --card: 26 24 21;
+  --surface: 34 31 27;
+  --pine: 125 214 180;
+  --pine-dark: 11 83 65;
+  --moss: 15 110 86;
+  --moss-dark: 11 83 65;
+  --amber: 232 176 96;
+  --danger: 240 150 150;
+  color-scheme: dark;
+}
+
+/* Pro neon — sáng: pastel galaxy trên nền sáng */
+html.pro-neon:not(.dark) {
+  --paper: 244 247 255;
+  --ink: 24 28 52;
+  --muted: 100 112 148;
+  --line: 196 206 240;
+  --card: 255 255 255;
+  --surface: 250 251 255;
+  --pine: 37 99 235;
+  --pine-dark: 29 78 216;
+  --moss: 79 70 229;
+  --moss-dark: 67 56 202;
+  --amber: 219 39 119;
+  --danger: 225 29 72;
+}
+
+/* Pro neon — tối: galaxy đậm */
+html.pro-neon.dark {
+  --paper: 7 8 20;
+  --ink: 236 242 255;
+  --muted: 148 163 194;
+  --line: 56 70 120;
+  --card: 14 16 36;
+  --surface: 18 22 48;
+  --pine: 56 189 248;
+  --pine-dark: 14 165 233;
+  --moss: 99 102 241;
+  --moss-dark: 129 140 248;
+  --amber: 244 114 182;
+  --danger: 251 113 133;
+}
+
+body {
+  min-height: 100vh;
+  color: rgb(var(--ink));
+}
+
+@keyframes pro-color-wash {
+  0% {
+    background-position: 0% 30%, 100% 70%, 40% 100%, 80% 10%;
+  }
+  33% {
+    background-position: 60% 10%, 20% 90%, 90% 40%, 10% 60%;
+  }
+  66% {
+    background-position: 100% 50%, 0% 20%, 30% 0%, 70% 100%;
+  }
+  100% {
+    background-position: 0% 30%, 100% 70%, 40% 100%, 80% 10%;
+  }
+}
+
+/* Lớp nền rải màu cố định — mọi trang (sáng / tối) */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: rgb(var(--paper));
+  background-repeat: no-repeat;
+  animation: pro-color-wash 22s ease-in-out infinite;
+}
+
+html:not(.dark)::before {
+  background-image:
+    radial-gradient(ellipse 70% 55% at 15% 25%, rgba(96, 165, 250, 0.42), transparent 58%),
+    radial-gradient(ellipse 65% 50% at 85% 20%, rgba(167, 139, 250, 0.36), transparent 55%),
+    radial-gradient(ellipse 75% 55% at 70% 85%, rgba(244, 114, 182, 0.3), transparent 58%),
+    radial-gradient(ellipse 60% 45% at 10% 80%, rgba(45, 212, 191, 0.24), transparent 55%);
+  background-size: 180% 180%, 190% 170%, 200% 180%, 170% 190%;
+}
+
+html.dark::before {
+  background-image:
+    radial-gradient(ellipse 75% 60% at 18% 22%, rgba(56, 189, 248, 0.38), transparent 58%),
+    radial-gradient(ellipse 70% 55% at 88% 18%, rgba(167, 139, 250, 0.36), transparent 55%),
+    radial-gradient(ellipse 80% 58% at 65% 88%, rgba(244, 114, 182, 0.3), transparent 58%),
+    radial-gradient(ellipse 65% 50% at 8% 78%, rgba(52, 211, 153, 0.2), transparent 55%);
+  background-size: 190% 180%, 200% 170%, 210% 185%, 175% 195%;
+  animation-duration: 26s;
+}
+
+/* Pro: rải màu đậm hơn */
+html.pro-neon:not(.dark)::before {
+  background-image:
+    radial-gradient(ellipse 70% 55% at 15% 25%, rgba(96, 165, 250, 0.58), transparent 58%),
+    radial-gradient(ellipse 65% 50% at 85% 20%, rgba(167, 139, 250, 0.5), transparent 55%),
+    radial-gradient(ellipse 75% 55% at 70% 85%, rgba(244, 114, 182, 0.42), transparent 58%),
+    radial-gradient(ellipse 60% 45% at 10% 80%, rgba(45, 212, 191, 0.34), transparent 55%);
+}
+
+html.pro-neon.dark::before {
+  background-image:
+    radial-gradient(ellipse 75% 60% at 18% 22%, rgba(56, 189, 248, 0.48), transparent 58%),
+    radial-gradient(ellipse 70% 55% at 88% 18%, rgba(167, 139, 250, 0.45), transparent 55%),
+    radial-gradient(ellipse 80% 58% at 65% 88%, rgba(244, 114, 182, 0.38), transparent 58%),
+    radial-gradient(ellipse 65% 50% at 8% 78%, rgba(52, 211, 153, 0.26), transparent 55%);
+}
+
+body {
+  position: relative;
+  z-index: 1;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Chỉ làm nền trong suốt — không đụng position:fixed của shell */
+html .fixed.inset-0.bg-paper {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html::before {
+    animation: none;
+    background-position: 30% 40%, 70% 30%, 50% 80%, 20% 70%;
+  }
+}
+
+html header {
+  background-image:
+    linear-gradient(
+      105deg,
+      rgba(96, 165, 250, 0.14),
+      rgba(167, 139, 250, 0.1),
+      rgba(244, 114, 182, 0.1),
+      transparent 70%
+    );
+}
+
+html.dark header {
+  background-image:
+    linear-gradient(
+      105deg,
+      rgba(56, 189, 248, 0.16),
+      rgba(167, 139, 250, 0.12),
+      rgba(244, 114, 182, 0.12),
+      transparent 70%
+    );
+}
+
+html.pro-neon header {
+  border-color: color-mix(in srgb, rgb(var(--pine)) 35%, transparent) !important;
+  box-shadow: 0 0 24px color-mix(in srgb, rgb(var(--pine)) 14%, transparent);
+  background-image:
+    linear-gradient(
+      105deg,
+      rgba(56, 189, 248, 0.22),
+      rgba(167, 139, 250, 0.18),
+      rgba(244, 114, 182, 0.16),
+      transparent 65%
+    );
+}
+
+html.pro-neon .rounded-2xl.border,
+html.pro-neon .rounded-xl.border,
+html.pro-neon .rounded-lg.border {
+  border-color: color-mix(in srgb, rgb(var(--pine)) 40%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, rgb(var(--pine)) 10%, transparent),
+    0 0 18px color-mix(in srgb, rgb(var(--moss)) 12%, transparent);
+}
+
+html.pro-neon .bg-moss,
+html.pro-neon button.bg-moss,
+html.pro-neon a.bg-moss {
+  background-image: linear-gradient(120deg, #38bdf8, #818cf8, #f472b6) !important;
+  background-color: transparent !important;
+  box-shadow:
+    0 0 16px rgba(56, 189, 248, 0.4),
+    0 0 28px rgba(244, 114, 182, 0.22) !important;
+}
+
+html.pro-neon:not(.dark) .bg-moss,
+html.pro-neon:not(.dark) button.bg-moss,
+html.pro-neon:not(.dark) a.bg-moss {
+  background-image: linear-gradient(120deg, #60a5fa, #818cf8, #f472b6) !important;
+  box-shadow:
+    0 0 14px rgba(96, 165, 250, 0.35),
+    0 0 22px rgba(244, 114, 182, 0.18) !important;
+}
+
+html.pro-neon .bg-moss:hover,
+html.pro-neon .hover\:bg-moss-dark:hover,
+html.pro-neon button.bg-moss:hover {
+  filter: brightness(1.06);
+}
+
+html.pro-neon input,
+html.pro-neon textarea,
+html.pro-neon select {
+  border-color: color-mix(in srgb, rgb(var(--pine)) 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, rgb(var(--pine)) 6%, transparent);
+}
+
+html.pro-neon input:focus,
+html.pro-neon textarea:focus,
+html.pro-neon select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, rgb(var(--pine)) 75%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, rgb(var(--pine)) 22%, transparent),
+    0 0 16px color-mix(in srgb, rgb(var(--moss)) 22%, transparent);
+}
+
+html.pro-neon ::selection {
+  background: color-mix(in srgb, rgb(var(--moss)) 35%, transparent);
+  color: rgb(var(--ink));
+}
+
+html.pro-neon input[type="checkbox"] {
+  accent-color: rgb(var(--moss));
+}
+
+html.pro-neon aside {
+  border-color: color-mix(in srgb, rgb(var(--pine)) 30%, transparent) !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, rgb(var(--pine)) 8%, transparent), transparent 40%),
+    rgb(var(--card));
+}
+
+html.pro-neon aside a[aria-current="page"] {
+  box-shadow: 0 0 22px color-mix(in srgb, rgb(var(--moss)) 35%, transparent) !important;
+}
+
+::selection {
+  background: rgba(15, 110, 86, 0.18);
+  color: rgb(var(--ink));
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+input[type="checkbox"] {
+  accent-color: #0f6e56;
+}
+
+@keyframes chip-border-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chip-border-run {
+  position: relative;
+  display: inline-flex;
+  max-width: 16rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  padding: 1.5px;
+}
+
+.chip-border-run::before {
+  content: "";
+  position: absolute;
+  inset: -120%;
+  animation: chip-border-spin 2.8s linear infinite;
+  background: conic-gradient(
+    from 0deg,
+    #22d3ee,
+    #a3e635,
+    #fbbf24,
+    #22d3ee,
+    transparent 55%,
+    transparent 75%,
+    #22d3ee
+  );
+}
+
+.chip-border-run[data-tone="pro"]::before {
+  background: conic-gradient(
+    from 0deg,
+    #38bdf8,
+    #a78bfa,
+    #f472b6,
+    #22d3ee,
+    #818cf8,
+    transparent 55%,
+    transparent 75%,
+    #38bdf8
+  );
+}
+
+.chip-border-run[data-tone="both"]::before {
+  background: conic-gradient(
+    from 0deg,
+    #22d3ee,
+    #a3e635,
+    #fbbf24,
+    #a78bfa,
+    #f472b6,
+    #38bdf8,
+    transparent 58%,
+    transparent 74%,
+    #22d3ee
+  );
+}
+
+.chip-border-run > .chip-border-face {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.avatar-border-run {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  padding: 2px;
+}
+
+.avatar-border-run::before {
+  content: "";
+  position: absolute;
+  inset: -110%;
+  animation: chip-border-spin 2.6s linear infinite;
+  background: conic-gradient(
+    from 0deg,
+    #22d3ee,
+    #a3e635,
+    #fbbf24,
+    #22d3ee,
+    transparent 55%,
+    transparent 75%,
+    #22d3ee
+  );
+}
+
+.avatar-border-run[data-tone="pro"]::before {
+  background: conic-gradient(
+    from 0deg,
+    #38bdf8,
+    #a78bfa,
+    #f472b6,
+    #22d3ee,
+    #818cf8,
+    transparent 55%,
+    transparent 75%,
+    #38bdf8
+  );
+}
+
+.avatar-border-run[data-tone="both"]::before {
+  background: conic-gradient(
+    from 0deg,
+    #22d3ee,
+    #a3e635,
+    #fbbf24,
+    #a78bfa,
+    #f472b6,
+    #38bdf8,
+    transparent 58%,
+    transparent 74%,
+    #22d3ee
+  );
+}
+
+.avatar-border-run > .avatar-border-face {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgb(var(--surface));
+}

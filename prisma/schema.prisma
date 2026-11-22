@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String            @id @default(cuid())
+  name          String
+  email         String            @unique
+  passwordHash  String?
+  googleId      String?           @unique
+  avatarUrl     String?
+  role          String            @default("member")
+  plan          String            @default("free")
+  createdAt     DateTime          @default(now())
+  facebookKeyId String?
+  facebookKey   FacebookKey?      @relation(fields: [facebookKeyId], references: [id], onDelete: SetNull)
+  licenseKeys   LicenseKey[]
+  facebook      FacebookAccount?
+  batches       PostBatch[]
+}
+
+model FacebookKey {
+  id         String   @id @default(cuid())
+  label      String
+  color      String   @default("#0f6e56")
+  tokenEnc   String
+  fbUserId   String?
+  name       String?
+  hostUserId String   @unique
+  pageCount  Int      @default(0)
+  createdAt  DateTime @default(now())
+  users      User[]
+}
+
+model LicenseKey {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyHash      String
+  keyEncrypted String
+  status       String    @default("active")
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId, status])
+}
+
+model FacebookAccount {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fbUserId           String
+  name               String
+  userAccessTokenEnc String
+  tokenExpiresAt     DateTime?
+  connectedAt        DateTime @default(now())
+  pages              Page[]
+}
+
+model Page {
+  id                String          @id @default(cuid())
+  facebookAccountId String
+  account           FacebookAccount @relation(fields: [facebookAccountId], references: [id], onDelete: Cascade)
+  pageId            String
+  name              String
+  category          String?
+  pictureUrl        String?
+  accessTokenEnc    String
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([facebookAccountId, pageId])
+}
+
+model PostBatch {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message        String
+  link           String?
+  imagePath      String?
+  videoPath      String?
+  coverPath      String?
+  commentEnabled Boolean   @default(false)
+  commentText    String?
+  commentImagePath String?
+  separateComments Boolean @default(false)
+  delaySeconds   Int       @default(45)
+  commentDelaySeconds Int  @default(0)
+  scheduledAt    DateTime?
+  status         String    @default("queued")
+  createdAt      DateTime  @default(now())
+  jobs           PostJob[]
+}
+
+model PostJob {
+  id         String    @id @default(cuid())
+  batchId    String
+  batch      PostBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  fbPageId   String
+  pageName   String
+  position   Int
+  status     String    @default("pending")
+  fbPostId     String?
+  error        String?
+  commentStatus String  @default("skipped")
+  commentError  String?
+  commentId     String?
+  commentMessage String?
+  commentImagePath String?
+  commentItems  String?
+  commentSent   Int       @default(0)
+  commentNextAt DateTime?
+  coverWarning  String?
+  runAt      DateTime?
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([status, runAt])
+  @@index([batchId, position])
+}
