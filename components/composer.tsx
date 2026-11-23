@@ -1583,6 +1583,7 @@ export function Composer({
       setError("Số giây chờ bình luận từ 0 đến 180. 0 là mức nhanh nhất.");
       return;
     }
+    const postWait = postDelay;
     const clickedAt = new Date().toISOString();
     const targets = chosen.length > 0 ? chosen : [null];
     if (action !== "draft") {
@@ -1678,7 +1679,7 @@ export function Composer({
           message: text,
           status: data.status,
           createdAt: clickedAt,
-          delaySeconds: postDelay,
+          delaySeconds: postWait,
           counts: { success: 0, failed: 0, pending: selected.length, running: 0, total: selected.length },
           pages: selected
             .map((id) => pages.find((page) => page.id === id))

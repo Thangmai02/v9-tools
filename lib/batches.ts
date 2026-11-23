@@ -208,6 +208,8 @@ export function readBatchFields(source: {
   reactionType?: unknown;
   pace?: unknown;
   concurrency?: unknown;
+  runKey?: unknown;
+  runTotal?: unknown;
   commentText?: unknown;
   separateComments?: unknown;
   clearCommentImage?: unknown;
