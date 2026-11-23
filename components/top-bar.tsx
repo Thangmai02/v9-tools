@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { AccessNotices } from "@/components/access-notices";
 import { AccountChip } from "@/components/account-chip";
 import { WelcomeNotice } from "@/components/welcome-notice";
 import { AppNav } from "@/components/app-nav";
@@ -54,14 +55,7 @@ export function TopBar({
             <AppNav admin={adminNav} />
           </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-            <button
-              type="button"
-              aria-label="Thông báo"
-              className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink transition hover:border-pine/30 hover:bg-paper"
-            >
-              <BellIcon />
-              <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-moss" />
-            </button>
+            <AccessNotices />
             {trailing}
             {name || email ? (
               <AccountChip
@@ -84,11 +78,3 @@ export function TopBar({
   );
 }
 
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
-      <path strokeLinejoin="round" d="M5.2 8.6a4.8 4.8 0 0 1 9.6 0c0 3.2 1.2 4.2 1.2 4.2H4s1.2-1 1.2-4.2Z" />
-      <path strokeLinecap="round" d="M8.4 15.4a1.7 1.7 0 0 0 3.2 0" />
-    </svg>
-  );
-}

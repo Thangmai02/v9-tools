@@ -41,12 +41,6 @@ export default function HomePage() {
               >
                 Bắt đầu ngay
               </Link>
-              <Link
-                href="/register"
-                className="inline-flex h-11 items-center rounded-lg border border-line bg-surface px-5 text-sm font-semibold text-ink hover:border-pine/40"
-              >
-                Tạo tài khoản
-              </Link>
             </div>
           </div>
           <div className="rounded-2xl border border-line bg-card p-6 shadow-[0_10px_28px_rgba(27,25,20,0.05)]">

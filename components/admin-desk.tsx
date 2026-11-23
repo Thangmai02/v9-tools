@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { ProNeonBadge } from "@/components/account-chip";
+import { AdminNotices } from "@/components/admin-notices";
 import { AuthShell } from "@/components/auth-card";
 import { TopBar } from "@/components/top-bar";
 import {
@@ -371,6 +372,10 @@ function FacebookKeyCard({ onKeysChange }: { onKeysChange?: (keys: FbKey[]) => v
               </button>
             </div>
           </div>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            Auto lên camp cần token có quyền <span className="font-medium text-ink">ads_management</span> và Ad
+            Account trên tài khoản đó.
+          </p>
         </label>
       </form>
       {status ? <p className="mt-3 text-sm text-ink">{status}</p> : null}
@@ -388,6 +393,7 @@ export function AdminDesk({
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState<"accounts" | "notices">("accounts");
 
   async function load() {
     const response = await fetch("/api/admin/users");
@@ -493,6 +499,32 @@ export function AdminDesk({
       }
     >
       <main className="h-full w-full space-y-8 overflow-y-auto px-4 py-8 sm:px-5 sm:py-10 lg:px-6 xl:px-8">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-pressed={tab === "accounts"}
+            onClick={() => setTab("accounts")}
+            className={`h-10 rounded-full px-4 text-sm font-semibold ${
+              tab === "accounts" ? "bg-moss text-white" : "border border-line bg-surface text-ink"
+            }`}
+          >
+            Tài khoản
+          </button>
+          <button
+            type="button"
+            aria-pressed={tab === "notices"}
+            onClick={() => setTab("notices")}
+            className={`h-10 rounded-full px-4 text-sm font-semibold ${
+              tab === "notices" ? "bg-moss text-white" : "border border-line bg-surface text-ink"
+            }`}
+          >
+            Gửi thông báo
+          </button>
+        </div>
+        {tab === "notices" ? (
+          <AdminNotices users={users.map((user) => ({ id: user.id, name: user.name, email: user.email }))} />
+        ) : (
+        <>
         <FacebookKeyCard onKeysChange={setFbKeys} />
         <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Tài khoản</h1>
@@ -592,6 +624,8 @@ export function AdminDesk({
           </div>
         </div>
         </div>
+        </>
+        )}
       </main>
     </TopBar>
   );

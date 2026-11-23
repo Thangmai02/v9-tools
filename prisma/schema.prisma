@@ -24,6 +24,7 @@ model User {
   batches       PostBatch[]
   campJobs      CampJob[]
   campTemplates CampTemplate[]
+  announcements AnnouncementReceipt[]
 }
 
 model FacebookKey {
@@ -168,4 +169,25 @@ model CampTemplate {
   updatedAt    DateTime @updatedAt
 
   @@index([userId, updatedAt])
+}
+
+model Announcement {
+  id        String                  @id @default(cuid())
+  title     String
+  body      String
+  createdAt DateTime                @default(now())
+  receipts  AnnouncementReceipt[]
+}
+
+model AnnouncementReceipt {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  presentedAt    DateTime?
+  readAt         DateTime?
+
+  @@unique([announcementId, userId])
+  @@index([userId, presentedAt])
 }
