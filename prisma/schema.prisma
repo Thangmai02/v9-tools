@@ -175,6 +175,7 @@ model Announcement {
   id        String                  @id @default(cuid())
   title     String
   body      String
+  audience  String                  @default("all")
   createdAt DateTime                @default(now())
   receipts  AnnouncementReceipt[]
 }

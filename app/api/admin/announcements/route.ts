@@ -20,6 +20,10 @@ export async function GET() {
     take: 20,
     include: {
       _count: { select: { receipts: true } },
+      receipts: {
+        take: 6,
+        include: { user: { select: { name: true } } },
+      },
     },
   });
 
@@ -28,8 +32,10 @@ export async function GET() {
       id: row.id,
       title: row.title,
       body: row.body,
+      audience: row.audience,
       createdAt: row.createdAt,
       recipients: row._count.receipts,
+      names: row.receipts.map((item) => item.user.name),
     })),
   });
 }
@@ -44,7 +50,7 @@ export async function POST(request: Request) {
     title?: unknown;
     body?: unknown;
     userIds?: unknown;
-    all?: unknown;
+    audience?: unknown;
   } | null;
 
   const title = String(body?.title ?? "").trim();
@@ -56,23 +62,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Tiêu đề hoặc nội dung quá dài." }, { status: 400 });
   }
 
+  const audience = body?.audience === "one" || body?.audience === "group" ? body.audience : "all";
   const members = await prisma.user.findMany({
     where: memberWhere,
     select: { id: true },
   });
   const allowed = new Set(members.map((user) => user.id));
   const requested = Array.isArray(body?.userIds)
-    ? body.userIds.map((id) => String(id)).filter((id) => allowed.has(id))
+    ? [...new Set(body.userIds.map((id) => String(id)).filter((id) => allowed.has(id)))]
     : [];
-  const userIds = body?.all === true ? [...allowed] : [...new Set(requested)];
+  const userIds = audience === "all" ? [...allowed] : requested;
+  if (audience === "one" && userIds.length !== 1) {
+    return NextResponse.json({ error: "Chọn đúng một tài khoản." }, { status: 400 });
+  }
+  if (audience === "group" && userIds.length < 2) {
+    return NextResponse.json({ error: "Nhóm cần ít nhất hai tài khoản." }, { status: 400 });
+  }
   if (!userIds.length) {
-    return NextResponse.json({ error: "Chọn ít nhất một tài khoản." }, { status: 400 });
+    return NextResponse.json({ error: "Chưa có tài khoản để gửi." }, { status: 400 });
   }
 
   const created = await prisma.announcement.create({
     data: {
       title,
       body: message,
+      audience,
       receipts: {
         create: userIds.map((userId) => ({ userId })),
       },
