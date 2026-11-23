@@ -16,7 +16,7 @@ const steps = [
   },
   {
     title: "Soạn và đăng",
-    text: "Chọn nhiều Page, viết một bài, tool đăng lần lượt và ghi nhật ký.",
+    text: "Chọn nhiều Page, viết một bài. Chế độ nhanh đăng hết video trước, bình luận đi sau, và ghi nhật ký.",
   },
 ];
 
