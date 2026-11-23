@@ -1596,7 +1596,18 @@ export function Composer({
     setSavedNote("");
     const saved: { id: string; status: string }[] = [];
     const doneKeys = new Set<string>();
-    for (const item of targets) {
+    const runKey =
+      action !== "draft" && targets.length > 1
+        ? `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+        : "";
+    const lanes =
+      runKey && postMode === "fast" ? Math.min(Math.max(threads, 1), targets.length) : 1;
+    const queue = [...targets];
+    let failed = "";
+    async function sendNext() {
+      if (failed || queue.length === 0) return;
+      const item = queue.shift();
+      if (item === undefined) return;
       const form = new FormData();
       const text = manyContents && item ? item.caption.trim() : message;
       form.set("action", action);
@@ -1605,6 +1616,10 @@ export function Composer({
       form.set("commentDelaySeconds", String(commentEnabled ? commentDelay : 0));
       form.set("pace", postMode);
       form.set("concurrency", postMode === "fast" ? String(threads) : "1");
+      if (runKey) {
+        form.set("runKey", runKey);
+        form.set("runTotal", String(targets.length));
+      }
       if (commentEnabled) form.set("commentEnabled", "1");
       if (reactionEnabled) {
         form.set("reactionEnabled", "1");
@@ -1652,10 +1667,7 @@ export function Composer({
       const response = await fetch("/api/batches", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) {
-        setItems((current) => current.filter((row) => !doneKeys.has(row.key)));
-        setError(`${item?.name ? `${item.name}: ` : ""}${data.error || "Không lưu được bài."}`);
-        setPending(null);
-        router.refresh();
+        failed = `${item?.name ? `${item.name}: ` : ""}${data.error || "Không lưu được bài."}`;
         return;
       }
       saved.push(data);
@@ -1690,6 +1702,22 @@ export function Composer({
         });
       }
       if (item) doneKeys.add(item.key);
+      await sendNext();
+    }
+    await Promise.all(Array.from({ length: lanes }, () => sendNext()));
+    if (failed) {
+      if (runKey && saved.length > 0 && saved.length < targets.length) {
+        await fetch("/api/batches/run", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runKey, runTotal: saved.length }),
+        });
+      }
+      setItems((current) => current.filter((row) => !doneKeys.has(row.key)));
+      setError(failed);
+      setPending(null);
+      router.refresh();
+      return;
     }
     if (saved.length === 1 && saved[0].status === "draft") {
       setDraftId(saved[0].id);
@@ -2301,7 +2329,7 @@ export function Composer({
               onSeconds={setPostGap}
               min={0}
               max={600}
-              fastText="Nhanh: nhiều bài cùng lúc. Facebook nhận bài là luồng lấy bài tiếp. Bình luận và Thích chạy sau khi các bài đang tải đã đăng xong."
+              fastText="Nhanh: các luồng chỉ đăng video. Mọi Page có đủ video rồi mới bình luận và thả Thích."
               humanText="Từng bài một. Tự đặt số giây chờ. 0 là không chờ thêm. Không đặt số nhỏ hơn 0."
               estimate={postEstimate}
             />
@@ -2331,7 +2359,7 @@ export function Composer({
                 max={180}
                 fastText={
                   postMode === "fast"
-                    ? "Nhanh: bình luận gửi sau khi các bài đang tải đã đăng xong."
+                    ? "Nhanh: bình luận chỉ gửi sau khi mọi Page đã có đủ video."
                     : "Nhanh: đợi đăng xong cả đợt, rồi gửi bình luận liền nhau."
                 }
                 humanText="Tự đặt số giây giữa các bình luận. 0 là nhanh nhất. Không đặt số nhỏ hơn 0."
@@ -2349,7 +2377,7 @@ export function Composer({
             </label>
             <p className="text-sm leading-5 text-muted">
               {postMode === "fast"
-                ? "Đến giờ đã chọn, các luồng bắt đầu đăng. Bình luận và Thích chạy sau khi các bài đang tải đã đăng xong."
+                ? "Đến giờ đã chọn, các luồng đăng video trước. Bình luận và Thích chạy sau khi mọi Page đã có đủ video."
                 : "Đến giờ đã chọn, tool đăng từng Page. Bình luận chỉ chạy sau khi mọi Page trong đợt đã đăng xong."}
             </p>
 

@@ -660,7 +660,7 @@ async function runFastJob(jobId: string) {
       job.id,
       "Đã đăng",
       followUp.length
-        ? `Đã đăng ${job.pageName}. Facebook đã nhận bài. ${followUp.join(" và ")} gửi sau khi các bài đang tải xong.`
+        ? `Đã đăng ${job.pageName}. Facebook đã nhận bài. ${followUp.join(" và ")} gửi sau khi mọi Page đã có đủ video.`
         : `Đã đăng ${job.pageName}. Facebook đã nhận bài.`,
     );
   } catch (error) {
@@ -951,6 +951,38 @@ async function finishPendingReactions() {
   return true;
 }
 
+async function runsWaitingForVideos() {
+  const host = thisFileHost();
+  const rows = await prisma.postBatch.findMany({
+    where: {
+      fileHost: host,
+      runKey: { not: null },
+      createdAt: { gte: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+    },
+    select: { runKey: true, runTotal: true },
+  });
+  const groups = new Map<string, { seen: number; total: number }>();
+  for (const row of rows) {
+    if (!row.runKey) continue;
+    const current = groups.get(row.runKey) ?? { seen: 0, total: row.runTotal ?? 1 };
+    current.seen += 1;
+    current.total = Math.max(current.total, row.runTotal ?? 1);
+    groups.set(row.runKey, current);
+  }
+  for (const info of groups.values()) {
+    if (info.seen < info.total) return true;
+  }
+  const keys = [...groups.keys()];
+  if (keys.length === 0) return false;
+  const left = await prisma.postJob.count({
+    where: {
+      status: { in: ["pending", "queued", "running"] },
+      batch: { runKey: { in: keys }, fileHost: host, status: { notIn: ["stopped", "paused"] } },
+    },
+  });
+  return left > 0;
+}
+
 async function fastPostsLeft() {
   const now = new Date();
   const host = thisFileHost();
@@ -970,7 +1002,8 @@ async function tick() {
   const started = await startParallelJobs();
   if (await publishDue()) return true;
   const posting = await fastPostsLeft();
-  if (posting > 0) {
+  const waitingVideos = posting > 0 || (await runsWaitingForVideos());
+  if (waitingVideos) {
     await sleep(started ? 200 : 400);
     return true;
   }

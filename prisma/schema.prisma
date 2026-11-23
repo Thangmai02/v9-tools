@@ -102,6 +102,8 @@ model PostBatch {
   fileHost       String?
   pace           String    @default("human")
   concurrency    Int       @default(1)
+  runKey         String?
+  runTotal       Int?
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
   jobs           PostJob[]

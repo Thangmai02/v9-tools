@@ -1,0 +1,2 @@
+ALTER TABLE "PostBatch" ADD COLUMN "runKey" TEXT;
+ALTER TABLE "PostBatch" ADD COLUMN "runTotal" INTEGER;

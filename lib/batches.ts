@@ -63,6 +63,8 @@ export type BatchInput = {
   reactionType: "LIKE" | "LOVE" | "CARE";
   pace: "fast" | "human";
   concurrency: number;
+  runKey: string | null;
+  runTotal: number | null;
   commentText: string;
   separateComments: boolean;
   clearCommentImage: boolean;
@@ -259,6 +261,11 @@ export function readBatchFields(source: {
   const reactionEnabled = flag(source.reactionEnabled);
   const pace: "fast" | "human" = String(source.pace ?? "human") === "fast" ? "fast" : "human";
   const concurrency = readConcurrency(source.concurrency, pace);
+  const runKeyRaw = String(source.runKey ?? "").trim();
+  const runKey = /^run_[a-zA-Z0-9_-]{4,80}$/.test(runKeyRaw) ? runKeyRaw : null;
+  const runTotalNum = Number(source.runTotal);
+  const runTotal =
+    runKey && Number.isInteger(runTotalNum) && runTotalNum > 1 && runTotalNum <= 100 ? runTotalNum : null;
   const commentText = String(source.commentText ?? "").trim();
   if (commentText.length > 5000) {
     throw new Error("Bình luận tối đa 5000 ký tự.");
@@ -289,6 +296,8 @@ export function readBatchFields(source: {
     reactionType,
     pace,
     concurrency,
+    runKey,
+    runTotal,
     commentText,
     separateComments: flag(source.separateComments),
     clearCommentImage: flag(source.clearCommentImage),
@@ -413,6 +422,8 @@ export async function saveBatch(
         commentDelaySeconds: input.commentDelaySeconds,
         pace: input.pace,
         concurrency: input.concurrency,
+        runKey: input.runKey,
+        runTotal: input.runTotal,
         status: "preparing",
         fileHost: thisFileHost(),
       },
@@ -633,6 +644,8 @@ export async function saveBatch(
         reactionType: "LIKE",
         pace: input.pace,
         concurrency: input.concurrency,
+        runKey: input.runKey,
+        runTotal: input.runTotal,
         commentText: input.separateComments ? null : firstShared?.message ?? null,
         commentImagePath: input.separateComments ? null : firstShared?.imagePath ?? null,
         separateComments: input.separateComments,
