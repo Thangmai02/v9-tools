@@ -31,6 +31,9 @@ export async function GET(
       status: batch.status,
       stopAfterJobId: batch.stopAfterJobId,
       createdAt: batch.createdAt,
+      completedAt: batch.completedAt,
+      pace: batch.pace,
+      concurrency: batch.concurrency,
       scheduledAt: batch.scheduledAt,
       commentEnabled: batch.commentEnabled,
       commentText: batch.commentText,
@@ -47,6 +50,7 @@ export async function GET(
         error: job.error,
         commentStatus: job.commentStatus,
         commentError: job.commentError,
+        reactionStatus: job.reactionStatus,
         commentMessage: job.commentMessage,
         hasCommentImage: Boolean(job.commentImagePath),
         comments: parseStoredComments(job.commentItems).map((item) => ({

@@ -34,6 +34,7 @@ export type ComposerBatchPage = {
   fbPostId?: string | null;
   commentStatus?: string | null;
   commentError?: string | null;
+  reactionStatus?: string | null;
   stage?: string | null;
   log?: JobLogLine[];
   runAt?: string | null;
@@ -47,6 +48,7 @@ export type ComposerBatch = {
   message: string;
   status: string;
   createdAt: string;
+  completedAt?: string | null;
   delaySeconds: number;
   pages: ComposerBatchPage[];
   counts: { success: number; failed: number; pending: number; running: number; total: number };
@@ -708,6 +710,32 @@ function pageStatusLabel(status: string) {
   return status;
 }
 
+function progressLevel(page: ComposerBatchPage) {
+  const stage = page.stage || "";
+  const commenting =
+    page.commentStatus === "pending" || page.commentStatus === "waiting" || page.commentStatus === "running";
+  const reacting =
+    page.reactionStatus === "pending" || page.reactionStatus === "waiting" || page.reactionStatus === "running";
+  if (page.status === "failed" || page.status === "cancelled") {
+    return { step: 2, label: stage || pageStatusLabel(page.status), percent: 100 };
+  }
+  if (page.status === "success" && !commenting && !reacting) {
+    return { step: 4, label: stage || "Xong", percent: 100 };
+  }
+  if (commenting) return { step: 4, label: stage || "Đang bình luận", percent: 86 };
+  if (reacting || stage.includes("cảm xúc")) {
+    return { step: 3, label: stage || "Đang thả cảm xúc", percent: 74 };
+  }
+  if (page.status === "success") return { step: 3, label: stage || "Facebook đã nhận bài", percent: 68 };
+  if (page.status === "running" || page.status === "preparing") {
+    return { step: 2, label: stage || "Đang gửi lên Facebook", percent: 46 };
+  }
+  if (page.status === "pending" || page.status === "queued") {
+    return { step: 1, label: stage || "Chờ lượt", percent: 16 };
+  }
+  return { step: 0, label: "Sẵn sàng", percent: 0 };
+}
+
 function pageBarClass(status: string) {
   if (status === "success") return "bg-pine";
   if (status === "failed") return "bg-danger";
@@ -715,6 +743,17 @@ function pageBarClass(status: string) {
   if (status === "pending" || status === "queued") return "bg-amber/40";
   if (status === "cancelled") return "bg-line";
   return "bg-line";
+}
+
+function formatSeconds(ms: number) {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds} giây`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) return rest ? `${minutes} phút ${rest} giây` : `${minutes} phút`;
+  const hours = Math.floor(minutes / 60);
+  const remain = minutes % 60;
+  return remain ? `${hours} giờ ${remain} phút` : `${hours} giờ`;
 }
 
 function formatRunDuration(page: ComposerBatchPage) {
@@ -727,11 +766,34 @@ function formatRunDuration(page: ComposerBatchPage) {
         ? Date.now()
         : null;
   if (endMs == null) return null;
-  const seconds = Math.max(0, Math.round((endMs - new Date(start).getTime()) / 1000));
-  if (seconds < 60) return `${seconds} giây`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return rest ? `${minutes} phút ${rest} giây` : `${minutes} phút`;
+  return formatSeconds(endMs - new Date(start).getTime());
+}
+
+function stallReason(page: ComposerBatchPage, now: number) {
+  if (page.error) return page.error;
+  if (page.commentStatus === "failed" && page.commentError && !page.commentError.startsWith("retry:")) {
+    return page.commentError;
+  }
+  const stage = page.stage || "";
+  const started = page.startedAt ? new Date(page.startedAt).getTime() : null;
+  const elapsed = started ? Math.max(0, now - started) : 0;
+  const waited = formatSeconds(elapsed);
+  const uploadingVideo = stage.toLowerCase().includes("video");
+  const uploadingImage = stage.toLowerCase().includes("ảnh") && (page.status === "running" || page.status === "preparing");
+  if (uploadingVideo && elapsed >= 15000) {
+    return `Video đang tải lên Facebook, đã ${waited}. Facebook chưa phản hồi. File nặng sẽ đứng ở mức Đang gửi đến khi nhận xong, chưa phải lỗi.`;
+  }
+  if (uploadingImage && elapsed >= 15000) {
+    return `Ảnh đang tải lên Facebook, đã ${waited}. Facebook chưa phản hồi. File sẽ đứng ở mức Đang gửi đến khi nhận xong.`;
+  }
+  const last = page.log?.[page.log.length - 1]?.m ?? "";
+  if (page.commentError?.startsWith("retry:") || last.includes("thử lại") || last.includes("chưa nhận")) {
+    return last || "Facebook chưa nhận bình luận hoặc cảm xúc, đang thử lại.";
+  }
+  if ((page.status === "running" || page.status === "preparing") && elapsed >= 30000) {
+    return `Vẫn ở bước “${stage || "Đang gửi"}”, đã ${waited}. Đang chờ Facebook trả lời.`;
+  }
+  return null;
 }
 
 function PageRunCard({
@@ -747,6 +809,17 @@ function PageRunCard({
   const success = page.status === "success" ? 1 : 0;
   const failed = page.status === "failed" ? 1 : 0;
   const duration = formatRunDuration(page);
+  const level = progressLevel(page);
+  const latestLog = page.log?.[page.log.length - 1]?.m;
+  const live = page.status === "running" || page.status === "preparing" || page.commentStatus === "waiting" || page.reactionStatus === "waiting";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [live]);
+  const reason = page.status === "idle" ? null : stallReason(page, now);
+  const steps = ["Chờ", "Đang gửi", "Đã nhận", "Xong"];
   const detailText = (page.message ?? batchMessage ?? "").trim();
   const hasDetail =
     page.status !== "idle" ||
@@ -772,15 +845,25 @@ function PageRunCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">{page.name}</p>
-          <p className={`mt-0.5 text-xs font-medium ${pageStatusTone(page.status)}`}>
-            {(page.status === "pending" || page.status === "queued") && page.runAt ? (
-              <WaitLine runAt={page.runAt} />
-            ) : (
-              page.stage || pageStatusLabel(page.status)
-            )}
-          </p>
-          {(page.status === "pending" || page.status === "queued") && page.runAt && page.stage ? (
-            <p className="mt-0.5 text-[11px] leading-4 text-muted">{page.stage}</p>
+          {page.status === "idle" ? (
+            <p className="mt-0.5 text-xs text-muted">Sẵn sàng</p>
+          ) : (
+            <p className={`mt-0.5 text-xs font-medium ${pageStatusTone(page.status)}`}>
+              Mức {Math.max(level.step, 1)}/4 ·{" "}
+              {(page.status === "pending" || page.status === "queued") && page.runAt ? (
+                <WaitLine runAt={page.runAt} />
+              ) : (
+                level.label
+              )}
+            </p>
+          )}
+          {page.status !== "idle" && latestLog && latestLog !== level.label && latestLog !== reason ? (
+            <p className="mt-0.5 text-[11px] leading-4 text-ink">{latestLog}</p>
+          ) : null}
+          {reason ? (
+            <p className={`mt-1 text-[11px] leading-4 ${page.error || page.status === "failed" ? "text-danger" : "text-amber"}`}>
+              {reason}
+            </p>
           ) : null}
         </div>
         {page.status !== "idle" ? (
@@ -791,18 +874,27 @@ function PageRunCard({
       <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-line/80" aria-hidden>
         <span
           className={`h-full transition-[width] ${pageBarClass(page.status)}`}
-          style={{
-            width:
-              page.status === "success" || page.status === "failed" || page.status === "cancelled"
-                ? "100%"
-                : page.status === "running" || page.status === "preparing"
-                  ? "60%"
-                  : page.status === "pending" || page.status === "queued"
-                    ? "20%"
-                    : "0%",
-          }}
+          style={{ width: `${level.percent}%` }}
         />
       </div>
+      {page.status === "idle" ? null : (
+      <ol className="mt-2 grid grid-cols-4 gap-1">
+        {steps.map((name, index) => {
+          const current = index + 1 === level.step;
+          const done = level.step > index + 1 || (level.step === 4 && page.status === "success");
+          return (
+            <li
+              key={name}
+              className={`truncate text-center text-[10px] leading-4 ${
+                current ? "font-semibold text-ink" : done ? "text-pine" : "text-muted"
+              }`}
+            >
+              {name}
+            </li>
+          );
+        })}
+      </ol>
+      )}
       <JobLogList lines={page.log} />
 
       {page.status !== "idle" ? (
@@ -882,20 +974,101 @@ function PageRunCard({
   );
 }
 
+function TotalRun({
+  createdAt,
+  status,
+  completedAt,
+}: {
+  createdAt: string;
+  status: string;
+  completedAt?: string | null;
+}) {
+  const closed = status === "finished" || status === "stopped" || status === "failed";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (closed) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [closed]);
+  const start = new Date(createdAt).getTime();
+  const finished = completedAt ? new Date(completedAt).getTime() : NaN;
+  if (!Number.isFinite(start)) return null;
+  if (closed && !Number.isFinite(finished)) return null;
+  const end = closed ? finished : now;
+  const label = status === "stopped" ? "đã dừng" : closed ? "đã xong" : "đang chạy";
+  return (
+    <p className="mt-1 text-xs font-medium text-ink">
+      Tổng thời gian: {formatSeconds(Math.max(0, end - start))} · {label}
+    </p>
+  );
+}
+
+type ThreadRow = { key: string; title: string; detail: string };
+
+function threadRows(
+  jobs: {
+    id?: string;
+    pageName: string;
+    status: string;
+    stage?: string | null;
+    log?: { t: string; m: string }[];
+    commentStatus?: string | null;
+    reactionStatus?: string | null;
+    startedAt?: string | null;
+  }[],
+  cap: number,
+): ThreadRow[] {
+  const busy = jobs
+    .filter(
+      (job) =>
+        job.status === "running" ||
+        job.status === "preparing" ||
+        job.commentStatus === "running" ||
+        job.reactionStatus === "running",
+    )
+    .sort((a, b) => {
+      const left = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+      const right = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+      return left - right;
+    });
+  const queued = jobs.some((job) => job.status === "queued" || job.status === "pending");
+  const rows: ThreadRow[] = busy.map((job, index) => {
+    const last = job.log?.[job.log.length - 1]?.m;
+    return {
+      key: job.id || `${job.pageName}-${index}`,
+      title: job.pageName,
+      detail: last || job.stage || "Đang chạy",
+    };
+  });
+  if (queued) {
+    const room = Math.max(0, cap - rows.length);
+    for (let index = 0; index < room; index += 1) {
+      rows.push({ key: `wait-${index}`, title: "Trống", detail: "Đang chờ bài tiếp" });
+    }
+  }
+  return rows;
+}
+
 function PageProgressPanel({
   pages,
   selected,
   latest,
+  runIds,
 }: {
   pages: ComposerPage[];
   selected: string[];
   latest: ComposerBatch | null;
+  runIds?: string[];
 }) {
   const [livePages, setLivePages] = useState<ComposerBatchPage[] | null>(null);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [liveDelay, setLiveDelay] = useState<number | null>(null);
+  const [liveCompletedAt, setLiveCompletedAt] = useState<string | null>(latest?.completedAt ?? null);
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
   const batchId = latest?.id ?? null;
+  const watchIds = runIds && runIds.length > 0 ? runIds : batchId ? [batchId] : [];
+  const watchKey = watchIds.join(",");
   const batchActive =
     latest != null && latest.status !== "finished" && latest.status !== "draft" && latest.status !== "stopped";
 
@@ -908,16 +1081,49 @@ function PageProgressPanel({
     let timer = 0;
 
     async function load() {
-      const response = await fetch(`/api/batches/${batchId}`);
-      const data = await response.json();
-      if (stop || !response.ok) return;
-      const jobs = (data.batch?.jobs ?? []) as {
+      const ids = watchKey ? watchKey.split(",") : [];
+      const payloads = await Promise.all(
+        ids.map(async (id) => {
+          const response = await fetch(`/api/batches/${id}`);
+          const data = await response.json();
+          return response.ok ? data : null;
+        }),
+      );
+      if (stop) return;
+      const batches = payloads.map((item) => item?.batch).filter(Boolean) as {
+        id: string;
+        message?: string;
+        status?: string;
+        delaySeconds?: number;
+        completedAt?: string | null;
+        concurrency?: number;
+        pace?: string;
+        jobs?: {
+          id?: string;
+          pageName: string;
+          status: string;
+          error?: string | null;
+          fbPostId?: string | null;
+          commentStatus?: string | null;
+          commentError?: string | null;
+          reactionStatus?: string | null;
+          stage?: string | null;
+          log?: { t: string; m: string }[];
+          runAt?: string | null;
+          startedAt?: string | null;
+          finishedAt?: string | null;
+        }[];
+      }[];
+      const data = { batch: batches.find((batch) => batch.id === batchId) ?? batches[0] };
+      if (!data.batch) return;
+      const jobs = (data.batch.jobs ?? []) as {
         pageName: string;
         status: string;
         error?: string | null;
         fbPostId?: string | null;
         commentStatus?: string | null;
         commentError?: string | null;
+        reactionStatus?: string | null;
         stage?: string | null;
         log?: { t: string; m: string }[];
         runAt?: string | null;
@@ -926,7 +1132,13 @@ function PageProgressPanel({
       }[];
       const batchMessage = (data.batch?.message as string | undefined) ?? latest?.message ?? null;
       setLiveStatus(typeof data.batch?.status === "string" ? data.batch.status : null);
+      setLiveCompletedAt(typeof data.batch?.completedAt === "string" ? data.batch.completedAt : null);
       setLiveDelay(typeof data.batch?.delaySeconds === "number" ? data.batch.delaySeconds : null);
+      const allJobs = batches.flatMap((batch) => batch.jobs ?? []);
+      const cap = Math.max(
+        1,
+        ...batches.map((batch) => (batch.pace === "fast" ? Math.min(8, batch.concurrency || 1) : 1)),
+      );
       setLivePages(
         jobs.map((job) => {
           const known =
@@ -941,6 +1153,7 @@ function PageProgressPanel({
             fbPostId: job.fbPostId ?? null,
             commentStatus: job.commentStatus ?? null,
             commentError: job.commentError ?? null,
+            reactionStatus: job.reactionStatus ?? null,
             stage: job.stage ?? null,
             log: job.log ?? [],
             runAt: job.runAt ?? null,
@@ -950,14 +1163,27 @@ function PageProgressPanel({
           };
         }),
       );
-      const commenting = jobs.some(
-        (job) => job.commentStatus === "pending" || job.commentStatus === "waiting",
-      );
-      const done =
-        data.batch?.status === "finished" ||
-        data.batch?.status === "draft" ||
-        data.batch?.status === "stopped";
-      if (!done || commenting) timer = window.setTimeout(load, 2000);
+      const stillOpen = batches.some((batch) => {
+        const commenting = (batch.jobs ?? []).some(
+          (job) =>
+            job.commentStatus === "pending" ||
+            job.commentStatus === "waiting" ||
+            job.commentStatus === "running" ||
+            job.reactionStatus === "pending" ||
+            job.reactionStatus === "waiting" ||
+            job.reactionStatus === "running" ||
+            job.status === "queued" ||
+            job.status === "pending" ||
+            job.status === "running" ||
+            job.status === "preparing",
+        );
+        const done = batch.status === "finished" || batch.status === "draft" || batch.status === "stopped";
+        return !done || commenting;
+      });
+      if (stillOpen) {
+        setThreads(threadRows(allJobs, cap));
+        timer = window.setTimeout(load, 1000);
+      } else setThreads([]);
     }
 
     load();
@@ -965,7 +1191,7 @@ function PageProgressPanel({
       stop = true;
       window.clearTimeout(timer);
     };
-  }, [batchId, batchActive, latest?.pages, latest?.message, pages, reloadKey]);
+  }, [batchId, batchActive, latest?.pages, latest?.message, pages, reloadKey, watchKey]);
 
   const slots: ComposerBatchPage[] = (() => {
     if (selected.length > 0) {
@@ -991,6 +1217,7 @@ function PageProgressPanel({
             fbPostId: source?.fbPostId ?? null,
             commentStatus: source?.commentStatus ?? null,
             commentError: source?.commentError ?? null,
+            reactionStatus: source?.reactionStatus ?? null,
             stage: source?.stage ?? null,
             log: source?.log ?? [],
             runAt: source?.runAt ?? null,
@@ -1013,7 +1240,15 @@ function PageProgressPanel({
     : null;
   const level =
     slots.find((page) => page.status === "running") ??
-    slots.find((page) => page.commentStatus === "pending" || page.commentStatus === "waiting") ??
+    slots.find(
+      (page) =>
+        page.commentStatus === "pending" ||
+        page.commentStatus === "waiting" ||
+        page.commentStatus === "running" ||
+        page.reactionStatus === "pending" ||
+        page.reactionStatus === "waiting" ||
+        page.reactionStatus === "running",
+    ) ??
     slots.find((page) => page.status === "pending" || page.status === "queued");
 
   return (
@@ -1032,9 +1267,29 @@ function PageProgressPanel({
               {level.name ? ` · ${level.name}` : ""}
             </p>
           ) : null}
+          {latest ? (
+            <TotalRun
+              createdAt={latest.createdAt}
+              status={batchStatus || latest.status}
+              completedAt={liveCompletedAt ?? latest.completedAt}
+            />
+          ) : null}
         </div>
         {latest ? <StatusBadge status={batchStatus || latest.status} /> : null}
       </div>
+      {threads.length ? (
+        <ol className="mt-3 space-y-1 rounded-lg border border-line bg-paper/60 px-2.5 py-2">
+          {threads.map((row, index) => (
+            <li key={row.key} className="text-[11px] leading-4 text-ink">
+              <span className="font-semibold">Luồng {index + 1}</span>
+              <span className="text-muted">
+                {" "}
+                · {row.title} · {row.detail}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {latest && batchId ? (
         <BatchRunControls
           id={batchId}
@@ -1090,11 +1345,7 @@ export function Composer({
   const [commentGap, setCommentGap] = useState(String(initialCommentDelay === 0 ? 20 : initialCommentDelay));
   const [commentEnabled, setCommentEnabled] = useState(initialDraft?.commentEnabled ?? false);
   const [reactionEnabled, setReactionEnabled] = useState(initialDraft?.reactionEnabled ?? false);
-  const [reactionType, setReactionType] = useState<"LIKE" | "LOVE" | "CARE">(
-    initialDraft?.reactionType === "LOVE" || initialDraft?.reactionType === "CARE"
-      ? initialDraft.reactionType
-      : "LIKE",
-  );
+  const [workers, setWorkers] = useState("3");
   const [separateComments, setSeparateComments] = useState(initialDraft?.separateComments ?? false);
   const [commentBoxes, setCommentBoxes] = useState<ChatBox[]>(() => boxesFrom(initialDraft?.comments));
   const [pageBoxes, setPageBoxes] = useState<Record<string, ChatBox[]>>(() => {
@@ -1115,7 +1366,30 @@ export function Composer({
   const [savedNote, setSavedNote] = useState("");
   const [pending, setPending] = useState<Action | null>(null);
   const [draftId, setDraftId] = useState(initialDraft?.id ?? "");
+  const [trackedBatch, setTrackedBatch] = useState<ComposerBatch | null>(batches[0] ?? null);
+  const [runIds, setRunIds] = useState<string[]>([]);
+  const hiddenBatchId = useRef<string | null>(null);
   const startedWithCover = Boolean(initialDraft?.coverUrl);
+
+  useEffect(() => {
+    const incoming = batches[0] ?? null;
+    if (!incoming || incoming.id === hiddenBatchId.current) return;
+    setTrackedBatch((current) => {
+      if (!current || current.id === incoming.id) {
+        if (
+          current &&
+          current.id === incoming.id &&
+          new Date(current.createdAt).getTime() < new Date(incoming.createdAt).getTime()
+        ) {
+          return { ...incoming, createdAt: current.createdAt };
+        }
+        return incoming;
+      }
+      return new Date(incoming.createdAt).getTime() >= new Date(current.createdAt).getTime()
+        ? incoming
+        : current;
+    });
+  }, [batches]);
 
   itemsRef.current = items;
 
@@ -1181,12 +1455,12 @@ export function Composer({
           : `${file.name}: chỉ nhận ảnh JPG, PNG, WEBP hoặc video MP4, WEBM, MOV.`;
         continue;
       }
-      if (kind === "video" && file.size > 80 * 1024 * 1024) {
-        problem = `${file.name}: video tối đa 80MB.`;
+      if (kind === "video" && file.size > 1024 * 1024 * 1024) {
+        problem = `${file.name}: video tối đa 1GB.`;
         continue;
       }
-      if (kind === "image" && file.size > 8 * 1024 * 1024) {
-        problem = `${file.name}: ảnh tối đa 8MB.`;
+      if (kind === "image" && file.size > 10 * 1024 * 1024) {
+        problem = `${file.name}: ảnh tối đa 10MB.`;
         continue;
       }
       accepted.push({
@@ -1257,6 +1531,11 @@ export function Composer({
       setError("Nhập nội dung riêng cho từng tệp đang chọn.");
       return;
     }
+    const threads = Number(workers);
+    if (postMode === "fast" && (!Number.isInteger(threads) || threads < 1 || threads > 8)) {
+      setError("Số luồng từ 1 đến 8. Khuyến nghị 3.");
+      return;
+    }
     const postDelay = paceValue(postMode, postGap, 0, 600);
     const commentDelay = paceValue(commentMode, commentGap, 0, 180);
     if (postDelay === null) {
@@ -1267,7 +1546,13 @@ export function Composer({
       setError("Số giây chờ bình luận từ 0 đến 180. 0 là mức nhanh nhất.");
       return;
     }
+    const clickedAt = new Date().toISOString();
     const targets = chosen.length > 0 ? chosen : [null];
+    if (action !== "draft") {
+      hiddenBatchId.current = trackedBatch?.id ?? hiddenBatchId.current;
+      setTrackedBatch(null);
+      setRunIds([]);
+    }
     setPending(action);
     setError("");
     setSavedNote("");
@@ -1280,9 +1565,13 @@ export function Composer({
       form.set("message", text);
       form.set("delaySeconds", String(postDelay));
       form.set("commentDelaySeconds", String(commentEnabled ? commentDelay : 0));
+      form.set("pace", postMode);
+      form.set("concurrency", postMode === "fast" ? String(threads) : "1");
       if (commentEnabled) form.set("commentEnabled", "1");
-      if (reactionEnabled) form.set("reactionEnabled", "1");
-      form.set("reactionType", reactionType);
+      if (reactionEnabled) {
+        form.set("reactionEnabled", "1");
+        form.set("reactionType", "LIKE");
+      }
       const slotPayload = (boxes: ChatBox[]) =>
         boxes.map((box) => ({
           text: box.text,
@@ -1332,6 +1621,36 @@ export function Composer({
         return;
       }
       saved.push(data);
+      if (action !== "draft") {
+        setRunIds(saved.map((row) => row.id));
+        setTrackedBatch({
+          id: data.id,
+          message: text,
+          status: data.status,
+          createdAt: clickedAt,
+          delaySeconds: postDelay,
+          counts: { success: 0, failed: 0, pending: selected.length, running: 0, total: selected.length },
+          pages: selected
+            .map((id) => pages.find((page) => page.id === id))
+            .filter((page): page is ComposerPage => Boolean(page))
+            .map((page) => ({
+              id: page.id,
+              name: page.name,
+              pictureUrl: page.pictureUrl,
+              status: "queued",
+              error: null,
+              fbPostId: null,
+              commentStatus: null,
+              commentError: null,
+              stage: "Sắp đăng",
+              log: [],
+              runAt: null,
+              startedAt: null,
+              finishedAt: null,
+              message: text,
+            })),
+        });
+      }
       if (item) doneKeys.add(item.key);
     }
     if (saved.length === 1 && saved[0].status === "draft") {
@@ -1929,40 +2248,12 @@ export function Composer({
             >
               <SwitchKnob on={reactionEnabled} />
               <span>
-                <span className="block text-sm font-medium text-ink">Tự thả cảm xúc sau khi đăng</span>
+                <span className="block text-sm font-medium text-ink">Tự động like bài viết</span>
                 <span className="mt-1 block text-sm leading-5 text-muted">
-                  Page tự thả một cảm xúc lên bài vừa tải lên. Bài vẫn giữ nếu cảm xúc lỗi.
+                  Bật thì Page bấm Thích sau khi Facebook nhận bài.
                 </span>
               </span>
             </button>
-            {reactionEnabled ? (
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Cảm xúc">
-                {(
-                  [
-                    ["LIKE", "👍", "Thích"],
-                    ["LOVE", "❤️", "Yêu thích"],
-                    ["CARE", "🤗", "Thương thương"],
-                  ] as const
-                ).map(([id, emoji, label]) => {
-                  const on = reactionType === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      role="radio"
-                      aria-checked={on}
-                      onClick={() => setReactionType(id)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${
-                        on ? "border-pine bg-pine/10 font-medium text-pine" : "border-line bg-surface text-ink"
-                      }`}
-                    >
-                      <span aria-hidden>{emoji}</span>
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
 
             <SpeedMode
               title="Tốc độ đăng"
@@ -1972,10 +2263,25 @@ export function Composer({
               onSeconds={setPostGap}
               min={0}
               max={600}
-              fastText="Nhanh nhất: Page này xong là sang Page kế ngay, không chờ thêm."
-              humanText="Tự đặt số giây chờ. 0 là nhanh nhất. Không đặt số nhỏ hơn 0."
+              fastText="Nhanh: nhiều bài cùng lúc. Mỗi luồng đăng một bài, gửi bình luận của bài đó, thả Thích, rồi lấy bài tiếp."
+              humanText="Từng bài một. Tự đặt số giây chờ. 0 là không chờ thêm. Không đặt số nhỏ hơn 0."
               estimate={postEstimate}
             />
+            {postMode === "fast" ? (
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <span className="font-medium">Số luồng</span>
+                <input
+                  value={workers}
+                  onChange={(event) => setWorkers(event.target.value)}
+                  type="number"
+                  min={1}
+                  max={8}
+                  aria-label="Số luồng cùng lúc"
+                  className="h-8 w-14 rounded-lg border border-line bg-surface px-1 text-center text-sm text-ink"
+                />
+                <span className="text-xs text-muted">Khuyến nghị 3, tối đa 8</span>
+              </label>
+            ) : null}
             {commentEnabled ? (
               <SpeedMode
                 title="Tốc độ bình luận"
@@ -1985,7 +2291,11 @@ export function Composer({
                 onSeconds={setCommentGap}
                 min={0}
                 max={180}
-                fastText="Nhanh nhất: đợi đăng xong cả đợt, rồi gửi bình luận liền nhau."
+                fastText={
+                  postMode === "fast"
+                    ? "Nhanh: bình luận gửi ngay trên luồng của bài vừa đăng."
+                    : "Nhanh: đợi đăng xong cả đợt, rồi gửi bình luận liền nhau."
+                }
                 humanText="Tự đặt số giây giữa các bình luận. 0 là nhanh nhất. Không đặt số nhỏ hơn 0."
                 estimate={commentEstimate}
               />
@@ -2000,7 +2310,9 @@ export function Composer({
               />
             </label>
             <p className="text-sm leading-5 text-muted">
-              Đến giờ đã chọn, tool mới đăng bài. Bình luận chỉ chạy sau khi mọi Page trong đợt đã đăng xong.
+              {postMode === "fast"
+                ? "Đến giờ đã chọn, các luồng bắt đầu đăng. Mỗi luồng gửi bình luận và thả Thích của bài đó trước khi lấy bài tiếp."
+                : "Đến giờ đã chọn, tool đăng từng Page. Bình luận chỉ chạy sau khi mọi Page trong đợt đã đăng xong."}
             </p>
 
             {error ? <ErrorNote>{error}</ErrorNote> : null}
@@ -2063,7 +2375,13 @@ export function Composer({
               </div>
             )}
           </div>
-          <PageProgressPanel pages={pages} selected={selected} latest={batches[0] ?? null} />
+          <PageProgressPanel
+            key={runIds[0] ?? trackedBatch?.id ?? "empty"}
+            pages={pages}
+            selected={selected}
+            latest={trackedBatch}
+            runIds={runIds}
+          />
         </aside>
       </main>
       {editing ? (

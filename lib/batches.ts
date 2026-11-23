@@ -5,9 +5,9 @@ import { parseStoredComments, type StoredComment } from "@/lib/comment-items";
 import { prisma } from "@/lib/db";
 import { portableUploadPath, thisFileHost, uploadAbsolute } from "@/lib/upload-path";
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
-const MAX_COVER_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 1024 * 1024 * 1024;
+const MAX_COVER_BYTES = 10 * 1024 * 1024;
 
 const IMAGE_TYPES = new Map([
   ["image/jpeg", ".jpg"],
@@ -61,6 +61,8 @@ export type BatchInput = {
   commentEnabled: boolean;
   reactionEnabled: boolean;
   reactionType: "LIKE" | "LOVE" | "CARE";
+  pace: "fast" | "human";
+  concurrency: number;
   commentText: string;
   separateComments: boolean;
   clearCommentImage: boolean;
@@ -75,10 +77,18 @@ export type BatchInput = {
   pageComments?: PageCommentInput[];
 };
 
-function readReactionType(value: unknown): "LIKE" | "LOVE" | "CARE" {
-  const raw = String(value ?? "LIKE").trim().toUpperCase();
-  if (raw === "LOVE" || raw === "CARE" || raw === "LIKE") return raw;
-  throw new Error("Chỉ chọn Thích, Yêu thích hoặc Thương thương.");
+function readConcurrency(value: unknown, pace: "fast" | "human") {
+  if (pace === "human") return 1;
+  if (value == null || String(value).trim() === "") return 3;
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1 || count > 8) {
+    throw new Error("Số luồng từ 1 đến 8. Khuyến nghị 3.");
+  }
+  return count;
+}
+
+function readReactionType(_value: unknown): "LIKE" | "LOVE" | "CARE" {
+  return "LIKE";
 }
 
 function parseLink(value: string) {
@@ -194,6 +204,8 @@ export function readBatchFields(source: {
   commentEnabled?: unknown;
   reactionEnabled?: unknown;
   reactionType?: unknown;
+  pace?: unknown;
+  concurrency?: unknown;
   commentText?: unknown;
   separateComments?: unknown;
   clearCommentImage?: unknown;
@@ -245,6 +257,8 @@ export function readBatchFields(source: {
   const commentEnabled = flag(source.commentEnabled);
   const reactionType = readReactionType(source.reactionType);
   const reactionEnabled = flag(source.reactionEnabled);
+  const pace: "fast" | "human" = String(source.pace ?? "human") === "fast" ? "fast" : "human";
+  const concurrency = readConcurrency(source.concurrency, pace);
   const commentText = String(source.commentText ?? "").trim();
   if (commentText.length > 5000) {
     throw new Error("Bình luận tối đa 5000 ký tự.");
@@ -273,6 +287,8 @@ export function readBatchFields(source: {
     commentEnabled,
     reactionEnabled,
     reactionType,
+    pace,
+    concurrency,
     commentText,
     separateComments: flag(source.separateComments),
     clearCommentImage: flag(source.clearCommentImage),
@@ -303,7 +319,9 @@ async function writeMedia(
   label: string,
 ) {
   if (file.size > maxBytes) {
-    throw new Error(`${label} tối đa ${Math.round(maxBytes / (1024 * 1024))}MB.`);
+    const mb = maxBytes / (1024 * 1024);
+    const sizeLabel = mb >= 1024 ? `${Math.round(mb / 1024)}GB` : `${Math.round(mb)}MB`;
+    throw new Error(`${label} tối đa ${sizeLabel}.`);
   }
   const safeStem = stem.replace(/[^A-Za-z0-9._-]/g, "_");
   const relative = portableUploadPath(`${safeStem}${extension}`);
@@ -393,6 +411,8 @@ export async function saveBatch(
         link: input.link,
         delaySeconds: input.delaySeconds,
         commentDelaySeconds: input.commentDelaySeconds,
+        pace: input.pace,
+        concurrency: input.concurrency,
         status: "preparing",
         fileHost: thisFileHost(),
       },
@@ -554,6 +574,7 @@ export async function saveBatch(
     const firstShared = sharedBuilt.find((item) => item.message || item.imagePath) ?? null;
 
     const firstRun = input.scheduledAt ?? new Date();
+    const parallel = publishing && input.pace === "fast";
     await prisma.postJob.deleteMany({ where: { batchId: batch.id } });
     if (uniqueIds.length > 0) {
       await prisma.postJob.createMany({
@@ -561,6 +582,7 @@ export async function saveBatch(
           const page = byId.get(id)!;
           const items = jobComments[position] ?? [];
           const first = items.find((item) => item.message || item.imagePath) ?? null;
+          const lead = position === 0 || parallel;
           return {
             batchId: batch.id,
             fbPageId: page.pageId,
@@ -568,7 +590,7 @@ export async function saveBatch(
             position,
             status: publishing ? "queued" : "draft",
             stage: publishing
-              ? position === 0
+              ? lead
                 ? input.scheduledAt
                   ? "Chờ đến giờ hẹn"
                   : "Sắp đăng"
@@ -577,14 +599,18 @@ export async function saveBatch(
             log: publishing
               ? appendJobLog(
                   null,
-                  position === 0
+                  parallel
                     ? input.scheduledAt
                       ? "Chờ đến giờ đã hẹn."
-                      : "Trong hàng chờ, sắp đăng."
-                    : "Chờ các Page phía trước.",
+                      : "Trong hàng chờ. Đăng cùng các luồng khác."
+                    : position === 0
+                      ? input.scheduledAt
+                        ? "Chờ đến giờ đã hẹn."
+                        : "Trong hàng chờ, sắp đăng."
+                      : "Chờ các Page phía trước.",
                 )
               : null,
-            runAt: publishing && position === 0 ? firstRun : null,
+            runAt: publishing && lead ? firstRun : null,
             commentStatus: "skipped",
             commentMessage: first?.message ?? null,
             commentImagePath: first?.imagePath ?? null,
@@ -604,7 +630,9 @@ export async function saveBatch(
         commentDelaySeconds: input.commentDelaySeconds,
         commentEnabled: input.commentEnabled,
         reactionEnabled: input.reactionEnabled,
-        reactionType: input.reactionType,
+        reactionType: "LIKE",
+        pace: input.pace,
+        concurrency: input.concurrency,
         commentText: input.separateComments ? null : firstShared?.message ?? null,
         commentImagePath: input.separateComments ? null : firstShared?.imagePath ?? null,
         separateComments: input.separateComments,

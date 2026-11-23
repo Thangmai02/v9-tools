@@ -91,6 +91,7 @@ export default async function ToolPage({
             fbPostId: true,
             commentStatus: true,
             commentError: true,
+            reactionStatus: true,
             stage: true,
             log: true,
             runAt: true,
@@ -175,6 +176,7 @@ export default async function ToolPage({
           message: batch.message,
           status: batch.status,
           createdAt: batch.createdAt.toISOString(),
+          completedAt: batch.completedAt?.toISOString() ?? null,
           delaySeconds: batch.delaySeconds,
           pages: batch.jobs.map((job) => {
             const page = pages.find((item) => item.pageId === job.fbPageId);
@@ -187,6 +189,7 @@ export default async function ToolPage({
               fbPostId: job.fbPostId,
               commentStatus: job.commentStatus,
               commentError: job.commentError,
+              reactionStatus: job.reactionStatus,
               stage: job.stage,
               log: parseJobLog(job.log).slice(-12),
               runAt: job.runAt?.toISOString() ?? null,

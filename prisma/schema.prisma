@@ -100,6 +100,9 @@ model PostBatch {
   status         String    @default("queued")
   stopAfterJobId String?
   fileHost       String?
+  pace           String    @default("human")
+  concurrency    Int       @default(1)
+  completedAt    DateTime?
   createdAt      DateTime  @default(now())
   jobs           PostJob[]
 }

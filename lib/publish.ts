@@ -178,19 +178,47 @@ async function postComment(targetId: string, input: {
   return result.id;
 }
 
+async function likeAsPage(targetId: string, token: string) {
+  const body = new URLSearchParams();
+  body.set("access_token", token);
+  try {
+    const result = await graphRequest(`${GRAPH}/${targetId}/likes`, { method: "POST", body });
+    if (result.success === false) {
+      throw new GraphError("Facebook không nhận lượt thích.");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (message.includes("already") || message.includes("đã thích")) return;
+    throw error;
+  }
+}
+
 export async function reactAsPage(input: {
   pageId: string;
   postId: string;
   token: string;
   type: "LIKE" | "LOVE" | "CARE";
 }) {
-  const body = new URLSearchParams();
-  body.set("type", input.type);
-  body.set("access_token", input.token);
   const target = pageScopedPostId(input.pageId, input.postId);
-  const result = await graphRequest(`${GRAPH}/${target}/reactions`, { method: "POST", body });
-  if (result.success === false) {
-    throw new GraphError("Facebook không nhận cảm xúc.");
+  if (input.type === "LIKE") {
+    await likeAsPage(target, input.token);
+    return { sent: "LIKE" as const, fallback: false };
+  }
+  try {
+    const body = new URLSearchParams();
+    body.set("type", input.type);
+    body.set("access_token", input.token);
+    const result = await graphRequest(`${GRAPH}/${target}/reactions`, { method: "POST", body });
+    if (result.success === false) {
+      throw new GraphError("Facebook không nhận cảm xúc.");
+    }
+    return { sent: input.type, fallback: false };
+  } catch (error) {
+    if (error instanceof GraphError && error.code === 3) {
+      await likeAsPage(target, input.token);
+      return { sent: "LIKE" as const, fallback: true };
+    }
+    throw error;
   }
 }
 

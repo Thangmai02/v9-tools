@@ -95,6 +95,8 @@ export async function POST(request: Request) {
         commentEnabled: form.get("commentEnabled"),
         reactionEnabled: form.get("reactionEnabled"),
         reactionType: form.get("reactionType"),
+        pace: form.get("pace"),
+        concurrency: form.get("concurrency"),
         commentText: form.get("commentText"),
         separateComments: form.get("separateComments"),
         clearCommentImage: form.get("clearCommentImage"),

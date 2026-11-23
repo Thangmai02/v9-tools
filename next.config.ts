@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
   experimental: {
-    middlewareClientMaxBodySize: "100mb",
+    middlewareClientMaxBodySize: "1024mb",
   },
 };
 
