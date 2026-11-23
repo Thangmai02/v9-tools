@@ -49,9 +49,6 @@ export function statusLabel(status: string) {
     skipped: "Không bình luận",
     free: "Thường",
     pro: "Pro",
-    success: "Thành công",
-    failed: "Lỗi",
-    pending: "Chờ",
   };
   return labels[status] ?? status;
 }
