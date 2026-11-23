@@ -93,6 +93,8 @@ export async function POST(request: Request) {
         commentDelaySeconds: form.get("commentDelaySeconds"),
         pageIds: form.getAll("pageIds").map(String),
         commentEnabled: form.get("commentEnabled"),
+        reactionEnabled: form.get("reactionEnabled"),
+        reactionType: form.get("reactionType"),
         commentText: form.get("commentText"),
         separateComments: form.get("separateComments"),
         clearCommentImage: form.get("clearCommentImage"),

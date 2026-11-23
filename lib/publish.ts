@@ -178,6 +178,22 @@ async function postComment(targetId: string, input: {
   return result.id;
 }
 
+export async function reactAsPage(input: {
+  pageId: string;
+  postId: string;
+  token: string;
+  type: "LIKE" | "LOVE" | "CARE";
+}) {
+  const body = new URLSearchParams();
+  body.set("type", input.type);
+  body.set("access_token", input.token);
+  const target = pageScopedPostId(input.pageId, input.postId);
+  const result = await graphRequest(`${GRAPH}/${target}/reactions`, { method: "POST", body });
+  if (result.success === false) {
+    throw new GraphError("Facebook không nhận cảm xúc.");
+  }
+}
+
 export async function commentAsPage(input: {
   pageId: string;
   postId: string;

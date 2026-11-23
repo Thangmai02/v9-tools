@@ -122,6 +122,9 @@ export default async function ToolPage({
         delaySeconds: row.delaySeconds,
         commentDelaySeconds: row.commentDelaySeconds,
         commentEnabled: row.commentEnabled,
+        reactionEnabled: row.reactionEnabled,
+        reactionType:
+          row.reactionType === "LOVE" || row.reactionType === "CARE" ? row.reactionType : "LIKE",
         commentText: row.commentText ?? "",
         separateComments: row.separateComments,
         commentImageUrl: row.commentImagePath ? `/api/batches/${row.id}/file?which=comment` : null,

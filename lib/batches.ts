@@ -59,6 +59,8 @@ export type BatchInput = {
   commentDelaySeconds: number;
   pageIds: string[];
   commentEnabled: boolean;
+  reactionEnabled: boolean;
+  reactionType: "LIKE" | "LOVE" | "CARE";
   commentText: string;
   separateComments: boolean;
   clearCommentImage: boolean;
@@ -72,6 +74,12 @@ export type BatchInput = {
   comments?: CommentSlotInput[];
   pageComments?: PageCommentInput[];
 };
+
+function readReactionType(value: unknown): "LIKE" | "LOVE" | "CARE" {
+  const raw = String(value ?? "LIKE").trim().toUpperCase();
+  if (raw === "LOVE" || raw === "CARE" || raw === "LIKE") return raw;
+  throw new Error("Chỉ chọn Thích, Yêu thích hoặc Thương thương.");
+}
 
 function parseLink(value: string) {
   const trimmed = value.trim();
@@ -184,6 +192,8 @@ export function readBatchFields(source: {
   commentDelaySeconds?: unknown;
   pageIds?: unknown;
   commentEnabled?: unknown;
+  reactionEnabled?: unknown;
+  reactionType?: unknown;
   commentText?: unknown;
   separateComments?: unknown;
   clearCommentImage?: unknown;
@@ -233,6 +243,8 @@ export function readBatchFields(source: {
   }
   const pageIds = Array.isArray(source.pageIds) ? source.pageIds.map(String) : [];
   const commentEnabled = flag(source.commentEnabled);
+  const reactionType = readReactionType(source.reactionType);
+  const reactionEnabled = flag(source.reactionEnabled);
   const commentText = String(source.commentText ?? "").trim();
   if (commentText.length > 5000) {
     throw new Error("Bình luận tối đa 5000 ký tự.");
@@ -259,6 +271,8 @@ export function readBatchFields(source: {
     commentDelaySeconds,
     pageIds,
     commentEnabled,
+    reactionEnabled,
+    reactionType,
     commentText,
     separateComments: flag(source.separateComments),
     clearCommentImage: flag(source.clearCommentImage),
@@ -589,6 +603,8 @@ export async function saveBatch(
         delaySeconds: input.delaySeconds,
         commentDelaySeconds: input.commentDelaySeconds,
         commentEnabled: input.commentEnabled,
+        reactionEnabled: input.reactionEnabled,
+        reactionType: input.reactionType,
         commentText: input.separateComments ? null : firstShared?.message ?? null,
         commentImagePath: input.separateComments ? null : firstShared?.imagePath ?? null,
         separateComments: input.separateComments,

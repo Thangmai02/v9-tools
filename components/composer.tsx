@@ -59,6 +59,8 @@ export type ComposerDraft = {
   delaySeconds: number;
   commentDelaySeconds: number;
   commentEnabled: boolean;
+  reactionEnabled: boolean;
+  reactionType: "LIKE" | "LOVE" | "CARE";
   commentText: string;
   separateComments: boolean;
   commentImageUrl: string | null;
@@ -1087,6 +1089,12 @@ export function Composer({
   const [commentMode, setCommentMode] = useState<"fast" | "human">(initialCommentDelay === 0 ? "fast" : "human");
   const [commentGap, setCommentGap] = useState(String(initialCommentDelay === 0 ? 20 : initialCommentDelay));
   const [commentEnabled, setCommentEnabled] = useState(initialDraft?.commentEnabled ?? false);
+  const [reactionEnabled, setReactionEnabled] = useState(initialDraft?.reactionEnabled ?? false);
+  const [reactionType, setReactionType] = useState<"LIKE" | "LOVE" | "CARE">(
+    initialDraft?.reactionType === "LOVE" || initialDraft?.reactionType === "CARE"
+      ? initialDraft.reactionType
+      : "LIKE",
+  );
   const [separateComments, setSeparateComments] = useState(initialDraft?.separateComments ?? false);
   const [commentBoxes, setCommentBoxes] = useState<ChatBox[]>(() => boxesFrom(initialDraft?.comments));
   const [pageBoxes, setPageBoxes] = useState<Record<string, ChatBox[]>>(() => {
@@ -1273,6 +1281,8 @@ export function Composer({
       form.set("delaySeconds", String(postDelay));
       form.set("commentDelaySeconds", String(commentEnabled ? commentDelay : 0));
       if (commentEnabled) form.set("commentEnabled", "1");
+      if (reactionEnabled) form.set("reactionEnabled", "1");
+      form.set("reactionType", reactionType);
       const slotPayload = (boxes: ChatBox[]) =>
         boxes.map((box) => ({
           text: box.text,
@@ -1907,6 +1917,50 @@ export function Composer({
                     }
                   />
                 )}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={reactionEnabled}
+              onClick={() => setReactionEnabled((on) => !on)}
+              className="flex w-full items-start gap-3 rounded-xl border border-line bg-surface px-3 py-3 text-left"
+            >
+              <SwitchKnob on={reactionEnabled} />
+              <span>
+                <span className="block text-sm font-medium text-ink">Tự thả cảm xúc sau khi đăng</span>
+                <span className="mt-1 block text-sm leading-5 text-muted">
+                  Page tự thả một cảm xúc lên bài vừa tải lên. Bài vẫn giữ nếu cảm xúc lỗi.
+                </span>
+              </span>
+            </button>
+            {reactionEnabled ? (
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Cảm xúc">
+                {(
+                  [
+                    ["LIKE", "👍", "Thích"],
+                    ["LOVE", "❤️", "Yêu thích"],
+                    ["CARE", "🤗", "Thương thương"],
+                  ] as const
+                ).map(([id, emoji, label]) => {
+                  const on = reactionType === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => setReactionType(id)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${
+                        on ? "border-pine bg-pine/10 font-medium text-pine" : "border-line bg-surface text-ink"
+                      }`}
+                    >
+                      <span aria-hidden>{emoji}</span>
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 

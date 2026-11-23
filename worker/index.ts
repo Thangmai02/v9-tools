@@ -12,6 +12,7 @@ import {
   publishFeed,
   publishPhoto,
   publishVideo,
+  reactAsPage,
   resolveCommentPostId,
   uploadAbsolute,
 } from "@/lib/publish";
@@ -19,6 +20,12 @@ import {
 const STUCK_MS = 15 * 60 * 1000;
 const POST_WAIT = ["pending", "queued"];
 const COMMENT_WAIT = ["pending", "waiting"];
+const REACTION_WAIT = ["pending", "waiting"];
+const REACTION_NAME: Record<string, string> = {
+  LIKE: "Thích",
+  LOVE: "Yêu thích",
+  CARE: "Thương thương",
+};
 
 async function note(
   jobId: string,
@@ -56,7 +63,8 @@ async function refreshBatch(batchId: string) {
       POST_WAIT.includes(job.status) ||
       job.status === "running" ||
       job.status === "draft" ||
-      (job.status === "success" && COMMENT_WAIT.includes(job.commentStatus)),
+      (job.status === "success" &&
+        (COMMENT_WAIT.includes(job.commentStatus) || REACTION_WAIT.includes(job.reactionStatus))),
   );
   if (open) return;
   const stopped = batch.status === "stopping" || Boolean(batch.stopAfterJobId);
@@ -445,6 +453,8 @@ async function publishDue() {
     }
 
     const wantComment = job.batch.commentEnabled && commentHasContent(commentsForJob(job));
+    const wantReaction = job.batch.reactionEnabled;
+    const reactionLabel = REACTION_NAME[job.batch.reactionType] ?? "Thích";
     await prisma.postJob.update({
       where: { id: job.id },
       data: {
@@ -453,15 +463,19 @@ async function publishDue() {
         error: null,
         coverWarning,
         commentStatus: wantComment ? "waiting" : "skipped",
+        reactionStatus: wantReaction ? "waiting" : "skipped",
+        reactionError: null,
+        reactionNextAt: null,
         finishedAt: new Date(),
       },
     });
+    const doneBits = ["Facebook đã nhận bài."];
+    if (wantComment) doneBits.push("Bình luận chạy sau khi mọi Page trong đợt đã đăng xong.");
+    if (wantReaction) doneBits.push(`Sẽ thả cảm xúc ${reactionLabel}.`);
     await note(
       job.id,
-      wantComment ? "Đã đăng, chờ cả đợt" : "Đã đăng",
-      wantComment
-        ? "Facebook đã nhận bài. Bình luận chạy sau khi mọi Page trong đợt đã đăng xong."
-        : "Facebook đã nhận bài.",
+      wantComment ? "Đã đăng, chờ cả đợt" : wantReaction ? "Đã đăng, chờ cảm xúc" : "Đã đăng",
+      doneBits.join(" "),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Đăng bài thất bại.";
@@ -477,9 +491,94 @@ async function publishDue() {
   return true;
 }
 
+async function finishPendingReactions() {
+  const now = new Date();
+  const jobs = await prisma.postJob.findMany({
+    where: {
+      status: "success",
+      reactionStatus: { in: REACTION_WAIT },
+      OR: [{ reactionNextAt: null }, { reactionNextAt: { lte: now } }],
+      batch: { reactionEnabled: true },
+    },
+    include: { batch: true },
+    orderBy: { finishedAt: "asc" },
+    take: 10,
+  });
+  if (jobs.length === 0) return false;
+  for (const job of jobs) {
+    const claim = await prisma.postJob.updateMany({
+      where: {
+        id: job.id,
+        reactionStatus: { in: REACTION_WAIT },
+        OR: [{ reactionNextAt: null }, { reactionNextAt: { lte: now } }],
+      },
+      data: { reactionNextAt: new Date(Date.now() + 2 * 60 * 1000) },
+    });
+    if (claim.count !== 1) continue;
+    const label = REACTION_NAME[job.batch.reactionType] ?? "Thích";
+    const type =
+      job.batch.reactionType === "LOVE" || job.batch.reactionType === "CARE"
+        ? job.batch.reactionType
+        : "LIKE";
+    try {
+      if (!job.fbPostId) throw new Error("Bài chưa có id để thả cảm xúc.");
+      const page = await pageToken(job.fbPageId);
+      if (!page) throw new Error("Page không còn. Admin cần đổi hoặc tải lại mã khóa.");
+      const token = decrypt(page.accessTokenEnc);
+      const resolved = await resolveCommentPostId(page.pageId, job.fbPostId, token);
+      if (!resolved) {
+        throw new GraphError("Bài chưa sẵn sàng để thả cảm xúc.", { code: 100, subcode: 33 });
+      }
+      if (resolved !== job.fbPostId) {
+        await prisma.postJob.update({ where: { id: job.id }, data: { fbPostId: resolved } });
+      }
+      await note(job.id, "Đang thả cảm xúc", `Đang thả ${label} cho ${job.pageName}.`);
+      await reactAsPage({
+        pageId: page.pageId,
+        postId: resolved,
+        token,
+        type,
+      });
+      await prisma.postJob.update({
+        where: { id: job.id },
+        data: { reactionStatus: "success", reactionError: null, reactionNextAt: null },
+      });
+      await note(job.id, "Đã thả cảm xúc", `Đã thả ${label} cho ${job.pageName}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thả được cảm xúc.";
+      const attempts = retryCount(job.reactionError) + 1;
+      if (transientCommentError(error) && attempts <= 8) {
+        const waitSeconds = Math.min(60, 8 * attempts);
+        await prisma.postJob.update({
+          where: { id: job.id },
+          data: {
+            reactionStatus: "waiting",
+            reactionError: `retry:${attempts}`,
+            reactionNextAt: new Date(Date.now() + waitSeconds * 1000),
+          },
+        });
+        await note(
+          job.id,
+          `Chờ ${waitSeconds} giây`,
+          `Facebook chưa nhận cảm xúc, thử lại sau ${waitSeconds} giây (lần ${attempts}).`,
+        );
+      } else {
+        await prisma.postJob.update({
+          where: { id: job.id },
+          data: { reactionStatus: "failed", reactionError: message, reactionNextAt: null },
+        });
+        await note(job.id, "Cảm xúc lỗi", message.slice(0, 280));
+      }
+    }
+    await refreshBatch(job.batchId);
+  }
+  return true;
+}
+
 async function tick() {
   await recoverStuck();
   if (await publishDue()) return true;
+  if (await finishPendingReactions()) return true;
   return finishPendingComments();
 }
 

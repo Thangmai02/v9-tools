@@ -94,6 +94,8 @@ model PostBatch {
   separateComments Boolean @default(false)
   delaySeconds   Int       @default(45)
   commentDelaySeconds Int  @default(0)
+  reactionEnabled Boolean  @default(false)
+  reactionType    String   @default("LIKE")
   scheduledAt    DateTime?
   status         String    @default("queued")
   stopAfterJobId String?
@@ -120,6 +122,9 @@ model PostJob {
   commentItems  String?
   commentSent   Int       @default(0)
   commentNextAt DateTime?
+  reactionStatus String   @default("skipped")
+  reactionError  String?
+  reactionNextAt DateTime?
   coverWarning  String?
   stage         String?
   log           String?

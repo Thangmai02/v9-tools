@@ -1,0 +1,5 @@
+ALTER TABLE "PostBatch" ADD COLUMN "reactionEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "PostBatch" ADD COLUMN "reactionType" TEXT NOT NULL DEFAULT 'LIKE';
+ALTER TABLE "PostJob" ADD COLUMN "reactionStatus" TEXT NOT NULL DEFAULT 'skipped';
+ALTER TABLE "PostJob" ADD COLUMN "reactionError" TEXT;
+ALTER TABLE "PostJob" ADD COLUMN "reactionNextAt" TIMESTAMP(3);
