@@ -1,6 +1,7 @@
 import { commentHasContent, parseStoredComments, type StoredComment } from "@/lib/comment-items";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { GraphError } from "@/lib/graph";
 import {
   captionForPhoto,
   commentAsPage,
@@ -83,6 +84,7 @@ async function finishPendingComments() {
           continue;
         }
         commentId = await commentAsPage({
+          pageId: page.pageId,
           postId: job.fbPostId,
           token: decrypt(page.accessTokenEnc),
           message: item.message ?? "",
@@ -117,6 +119,21 @@ async function finishPendingComments() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không bình luận được.";
+      const attempts = retryCount(job.commentError) + 1;
+      if (transientCommentError(error) && attempts <= 8) {
+        const waitSeconds = Math.min(60, 8 * attempts);
+        await prisma.postJob.update({
+          where: { id: job.id },
+          data: {
+            commentStatus: "pending",
+            commentError: `retry:${attempts}`,
+            commentNextAt: new Date(Date.now() + waitSeconds * 1000),
+          },
+        });
+        console.log(`Reel ${job.pageName} chưa nhận bình luận, thử lại sau ${waitSeconds} giây.`);
+        await refreshBatch(job.batchId);
+        continue;
+      }
       await prisma.postJob.update({
         where: { id: job.id },
         data: { commentStatus: "failed", commentError: message, commentNextAt: null },
@@ -125,6 +142,18 @@ async function finishPendingComments() {
     }
     await refreshBatch(job.batchId);
   }
+}
+
+function retryCount(error: string | null) {
+  const match = /^retry:(\d+)$/.exec(error ?? "");
+  return match ? Number(match[1]) : 0;
+}
+
+function transientCommentError(error: unknown) {
+  if (!(error instanceof GraphError)) return false;
+  if (error.code === 1 || error.code === 2) return true;
+  if (error.code === 100 && error.subcode === 33) return true;
+  return false;
 }
 
 function commentsForJob(job: {

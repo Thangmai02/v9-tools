@@ -2,6 +2,12 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { GRAPH, GraphError, graphRequest } from "@/lib/graph";
 
+export function pageScopedPostId(pageId: string, postId: string) {
+  const raw = postId.trim();
+  if (!raw || raw.includes("_")) return raw;
+  return `${pageId}_${raw}`;
+}
+
 export function captionForPhoto(message: string, link: string | null) {
   const text = message.trim();
   if (!link) return text;
@@ -43,7 +49,7 @@ export async function publishFeed(input: {
   if (typeof result.id !== "string" || !result.id) {
     throw new GraphError("Facebook không trả id bài viết.");
   }
-  return result.id;
+  return pageScopedPostId(input.pageId, result.id);
 }
 
 export async function publishPhoto(input: {
@@ -64,9 +70,9 @@ export async function publishPhoto(input: {
     method: "POST",
     body: form,
   });
-  const postId =
-    (typeof result.post_id === "string" && result.post_id) ||
-    (typeof result.id === "string" && result.id);
+  const storyId = typeof result.post_id === "string" ? result.post_id : "";
+  const photoId = typeof result.id === "string" ? result.id : "";
+  const postId = storyId ? pageScopedPostId(input.pageId, storyId) : photoId;
   if (!postId) {
     throw new GraphError("Facebook không trả id bài viết.");
   }
@@ -120,8 +126,11 @@ export async function publishVideo(input: {
     }
   }
 
-  const postId = await waitForFeedPostId(videoId, input.token);
-  return { postId: postId ?? videoId, coverWarning };
+  const storyId = await waitForFeedPostId(videoId, input.token);
+  return {
+    postId: storyId ? pageScopedPostId(input.pageId, storyId) : videoId,
+    coverWarning,
+  };
 }
 
 async function waitForFeedPostId(videoId: string, token: string) {
@@ -139,8 +148,7 @@ async function waitForFeedPostId(videoId: string, token: string) {
   return null;
 }
 
-export async function commentAsPage(input: {
-  postId: string;
+async function postComment(targetId: string, input: {
   token: string;
   message: string;
   imagePath?: string | null;
@@ -152,7 +160,7 @@ export async function commentAsPage(input: {
     if (input.message) form.set("message", input.message);
     form.set("access_token", input.token);
     form.set("source", new Blob([new Uint8Array(bytes)]), path.basename(absolute));
-    const result = await graphRequest(`${GRAPH}/${input.postId}/comments`, {
+    const result = await graphRequest(`${GRAPH}/${targetId}/comments`, {
       method: "POST",
       body: form,
     });
@@ -165,7 +173,7 @@ export async function commentAsPage(input: {
   const body = new URLSearchParams();
   body.set("message", input.message);
   body.set("access_token", input.token);
-  const result = await graphRequest(`${GRAPH}/${input.postId}/comments`, {
+  const result = await graphRequest(`${GRAPH}/${targetId}/comments`, {
     method: "POST",
     body,
   });
@@ -173,4 +181,24 @@ export async function commentAsPage(input: {
     throw new GraphError("Facebook không trả id bình luận.");
   }
   return result.id;
+}
+
+export async function commentAsPage(input: {
+  pageId: string;
+  postId: string;
+  token: string;
+  message: string;
+  imagePath?: string | null;
+}) {
+  const target = pageScopedPostId(input.pageId, input.postId);
+  try {
+    return await postComment(target, input);
+  } catch (error) {
+    const missingObject =
+      error instanceof GraphError && (error.code === 100 || error.code === 803);
+    if (target !== input.postId && missingObject) {
+      return await postComment(input.postId, input);
+    }
+    throw error;
+  }
 }
