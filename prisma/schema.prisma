@@ -96,6 +96,8 @@ model PostBatch {
   commentDelaySeconds Int  @default(0)
   scheduledAt    DateTime?
   status         String    @default("queued")
+  stopAfterJobId String?
+  fileHost       String?
   createdAt      DateTime  @default(now())
   jobs           PostJob[]
 }
@@ -119,6 +121,8 @@ model PostJob {
   commentSent   Int       @default(0)
   commentNextAt DateTime?
   coverWarning  String?
+  stage         String?
+  log           String?
   runAt      DateTime?
   startedAt  DateTime?
   finishedAt DateTime?

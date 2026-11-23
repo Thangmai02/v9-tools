@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BatchRunControls, JobLogList, WaitLine } from "@/components/batch-controls";
 import { cardClass, ErrorNote, formatWhen, linkClass, StatusBadge } from "@/components/ui";
+import type { JobLogLine } from "@/lib/job-log";
 
 type Job = {
   id: string;
@@ -16,6 +18,8 @@ type Job = {
   hasCommentImage?: boolean;
   comments?: { message: string | null; hasImage: boolean }[];
   coverWarning: string | null;
+  stage: string | null;
+  log: JobLogLine[];
   runAt: string | null;
   finishedAt: string | null;
 };
@@ -42,13 +46,16 @@ type Batch = {
 function barClass(status: string) {
   if (status === "success") return "bg-pine";
   if (status === "failed") return "bg-danger";
+  if (status === "cancelled") return "bg-line";
   if (status === "running" || status === "preparing") return "bg-pine/40";
   return "bg-amber";
 }
 
 function commentLine(job: Job) {
   if (job.commentStatus === "success") return "Fanpage đã bình luận.";
-  if (job.commentStatus === "pending") return "Bài đã đăng, đang bình luận...";
+  if (job.commentStatus === "pending" || job.commentStatus === "waiting") {
+    return job.stage || "Chờ đăng xong cả đợt rồi bình luận.";
+  }
   if (job.commentStatus === "failed") {
     return `Bài đã đăng. Bình luận lỗi: ${job.commentError || "Facebook từ chối bình luận."}`;
   }
@@ -58,6 +65,7 @@ function commentLine(job: Job) {
 export function BatchView({ id }: { id: string }) {
   const [batch, setBatch] = useState<Batch | null>(null);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let stop = false;
@@ -73,10 +81,14 @@ export function BatchView({ id }: { id: string }) {
       }
       setBatch(data.batch);
       const commenting = data.batch.jobs.some(
-        (job: { commentStatus?: string }) => job.commentStatus === "pending",
+        (job: { commentStatus?: string }) =>
+          job.commentStatus === "pending" || job.commentStatus === "waiting",
       );
-      const done = data.batch.status === "finished" || data.batch.status === "draft";
-      if (!done || commenting) timer = window.setTimeout(load, 3000);
+      const done =
+        data.batch.status === "finished" ||
+        data.batch.status === "draft" ||
+        data.batch.status === "stopped";
+      if (!done || commenting) timer = window.setTimeout(load, 2000);
     }
 
     load();
@@ -84,7 +96,7 @@ export function BatchView({ id }: { id: string }) {
       stop = true;
       window.clearTimeout(timer);
     };
-  }, [id]);
+  }, [id, reloadKey]);
 
   if (error) {
     return <ErrorNote>{error}</ErrorNote>;
@@ -111,6 +123,12 @@ export function BatchView({ id }: { id: string }) {
           <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Nhật ký đợt đăng</h1>
           <StatusBadge status={batch.status} />
         </div>
+        <BatchRunControls
+          id={batch.id}
+          status={batch.status}
+          delaySeconds={batch.delaySeconds}
+          onChanged={() => setReloadKey((value) => value + 1)}
+        />
         <p className="mt-2 text-sm text-muted">
           {formatWhen(batch.createdAt)} ·{" "}
           {batch.delaySeconds === 0 ? "đăng nhanh" : `giả lập đăng, chờ ${batch.delaySeconds} giây`}
@@ -155,6 +173,14 @@ export function BatchView({ id }: { id: string }) {
                 <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3 px-4 py-3.5">
                   <div className="min-w-0">
                     <p className="font-medium text-ink">{job.pageName}</p>
+                    {(job.status === "pending" || job.status === "queued") && job.runAt ? (
+                      <p className="mt-0.5 text-xs font-medium text-ink">
+                        <WaitLine runAt={job.runAt} />
+                      </p>
+                    ) : job.stage ? (
+                      <p className="mt-0.5 text-xs font-medium text-ink">{job.stage}</p>
+                    ) : null}
+                    <JobLogList lines={job.log} />
                     {job.comments && job.comments.length > 1 ? (
                       <ul className="mt-1 space-y-1 text-sm leading-5 text-muted">
                         {job.comments.map((item, index) => (
@@ -183,7 +209,7 @@ export function BatchView({ id }: { id: string }) {
                     {job.coverWarning ? (
                       <p className="mt-1 text-sm leading-5 text-amber">{job.coverWarning}</p>
                     ) : null}
-                    {job.status === "pending" && job.runAt ? (
+                    {(job.status === "pending" || job.status === "queued") && job.runAt ? (
                       <p className="mt-1 text-xs text-muted">Dự kiến {formatWhen(job.runAt)}</p>
                     ) : null}
                     {job.finishedAt ? (

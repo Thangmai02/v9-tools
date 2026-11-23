@@ -137,7 +137,7 @@ function countJobs(jobs: { status: string }[]) {
   return {
     success: jobs.filter((job) => job.status === "success").length,
     failed: jobs.filter((job) => job.status === "failed").length,
-    pending: jobs.filter((job) => job.status === "pending").length,
+    pending: jobs.filter((job) => job.status === "pending" || job.status === "queued").length,
     running: jobs.filter((job) => job.status === "running").length,
   };
 }

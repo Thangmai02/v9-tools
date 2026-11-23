@@ -1,6 +1,9 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { GRAPH, GraphError, graphRequest } from "@/lib/graph";
+import { uploadAbsolute } from "@/lib/upload-path";
+
+export { uploadAbsolute };
 
 export function pageScopedPostId(pageId: string, postId: string) {
   const raw = postId.trim();
@@ -13,21 +16,6 @@ export function captionForPhoto(message: string, link: string | null) {
   if (!link) return text;
   if (text.includes(link)) return text;
   return text ? `${text}\n${link}` : link;
-}
-
-export function uploadAbsolute(filePath: string) {
-  const absolute = path.resolve(process.cwd(), filePath);
-  const uploadsRoot = path.resolve(process.cwd(), "data", "uploads") + path.sep;
-  const left = process.platform === "win32" ? absolute.toLowerCase() : absolute;
-  const right = process.platform === "win32" ? uploadsRoot.toLowerCase() : uploadsRoot;
-  if (!left.startsWith(right)) {
-    throw new GraphError("Đường dẫn tệp không hợp lệ.");
-  }
-  return absolute;
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function publishFeed(input: {
@@ -85,6 +73,7 @@ export async function publishVideo(input: {
   description: string;
   filePath: string;
   coverPath: string | null;
+  onStage?: (text: string) => void | Promise<void>;
 }) {
   const absolute = uploadAbsolute(input.filePath);
   const bytes = await readFile(absolute);
@@ -104,8 +93,10 @@ export async function publishVideo(input: {
   }
 
   let coverWarning: string | null = null;
+  await input.onStage?.("Facebook đã nhận video");
   if (input.coverPath) {
     try {
+      await input.onStage?.("Đang gắn ảnh bìa");
       const coverAbsolute = uploadAbsolute(input.coverPath);
       const coverBytes = await readFile(coverAbsolute);
       const thumb = new FormData();
@@ -126,26 +117,30 @@ export async function publishVideo(input: {
     }
   }
 
-  const storyId = await waitForFeedPostId(videoId, input.token);
+  const storyId = await readStoryId(videoId, input.token);
   return {
     postId: storyId ? pageScopedPostId(input.pageId, storyId) : videoId,
     coverWarning,
   };
 }
 
-async function waitForFeedPostId(videoId: string, token: string) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      const body = await graphRequest(
-        `${GRAPH}/${videoId}?fields=post_id&access_token=${encodeURIComponent(token)}`,
-      );
-      if (typeof body.post_id === "string" && body.post_id) return body.post_id;
-    } catch {
-      // Video đang xử lý, thử lại.
-    }
-    await sleep(3000);
+async function readStoryId(videoId: string, token: string) {
+  try {
+    const body = await graphRequest(
+      `${GRAPH}/${videoId}?fields=post_id&access_token=${encodeURIComponent(token)}`,
+    );
+    if (typeof body.post_id === "string" && body.post_id) return body.post_id;
+  } catch {
+    return null;
   }
   return null;
+}
+
+export async function resolveCommentPostId(pageId: string, currentId: string, token: string) {
+  if (currentId.includes("_")) return currentId;
+  const storyId = await readStoryId(currentId, token);
+  if (!storyId) return null;
+  return pageScopedPostId(pageId, storyId);
 }
 
 async function postComment(targetId: string, input: {

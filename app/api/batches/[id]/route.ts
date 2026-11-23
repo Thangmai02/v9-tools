@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseStoredComments } from "@/lib/comment-items";
+import { parseJobLog } from "@/lib/job-log";
 import { prisma } from "@/lib/db";
 import { requireProUser } from "@/lib/auth";
 
@@ -28,6 +29,7 @@ export async function GET(
       delaySeconds: batch.delaySeconds,
       commentDelaySeconds: batch.commentDelaySeconds,
       status: batch.status,
+      stopAfterJobId: batch.stopAfterJobId,
       createdAt: batch.createdAt,
       scheduledAt: batch.scheduledAt,
       commentEnabled: batch.commentEnabled,
@@ -52,6 +54,8 @@ export async function GET(
           hasImage: Boolean(item.imagePath),
         })),
         coverWarning: job.coverWarning,
+        stage: job.stage,
+        log: parseJobLog(job.log).slice(-12),
         runAt: job.runAt,
         startedAt: job.startedAt,
         finishedAt: job.finishedAt,

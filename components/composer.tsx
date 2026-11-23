@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BatchRunControls, JobLogList, WaitLine } from "@/components/batch-controls";
 import { CoverEditor } from "@/components/cover-editor";
+import type { JobLogLine } from "@/lib/job-log";
 import {
   areaClass,
   buttonClass,
@@ -32,6 +34,8 @@ export type ComposerBatchPage = {
   fbPostId?: string | null;
   commentStatus?: string | null;
   commentError?: string | null;
+  stage?: string | null;
+  log?: JobLogLine[];
   runAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -182,9 +186,25 @@ function boxesFrom(
   }));
 }
 
+function isHeic(file: File) {
+  const name = file.name.toLowerCase();
+  return file.type === "image/heic" || file.type === "image/heif" || /\.hei[cf]$/.test(name);
+}
+
 function isCommentImage(file: File) {
+  if (isHeic(file)) return false;
   const name = file.name.toLowerCase();
   return file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/.test(name);
+}
+
+function filesFromDrop(transfer: DataTransfer | null) {
+  if (!transfer) return [] as File[];
+  const listed = Array.from(transfer.files ?? []);
+  if (listed.length > 0) return listed;
+  return Array.from(transfer.items ?? [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file != null);
 }
 
 function resizeBoxes(current: ChatBox[], count: number) {
@@ -242,7 +262,12 @@ function CommentZone({
   const [over, setOver] = useState(false);
 
   function takeFiles(list: FileList | File[]) {
-    const result = withDroppedImages(boxes, Array.from(list));
+    const files = Array.from(list);
+    if (files.some(isHeic)) {
+      onProblem("Ảnh HEIC của máy Mac hãy xuất JPG hoặc PNG rồi kéo lại.");
+      return;
+    }
+    const result = withDroppedImages(boxes, files);
     if (result.overflow) onProblem("Mỗi bài tối đa 100 bình luận.");
     else if (result.rejected) onProblem("Ảnh bình luận chỉ nhận JPG, PNG hoặc WEBP.");
     else onProblem("");
@@ -261,7 +286,8 @@ function CommentZone({
         event.preventDefault();
         event.stopPropagation();
         setOver(false);
-        if (event.dataTransfer.files.length) takeFiles(event.dataTransfer.files);
+        const dropped = filesFromDrop(event.dataTransfer);
+        if (dropped.length) takeFiles(dropped);
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -387,6 +413,7 @@ function initialItems(draft: ComposerDraft | null): MediaItem[] {
 }
 
 function fileKind(file: File): "image" | "video" | null {
+  if (isHeic(file)) return null;
   const name = file.name.toLowerCase();
   if (file.type.startsWith("video/") || /\.(mp4|webm|mov)$/.test(name)) return "video";
   if (file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/.test(name)) return "image";
@@ -673,7 +700,8 @@ function pageStatusLabel(status: string) {
   if (status === "success") return "Đã đăng";
   if (status === "failed") return "Lỗi";
   if (status === "running" || status === "preparing") return "Đang đăng";
-  if (status === "pending") return "Chờ đăng";
+  if (status === "pending" || status === "queued") return "Chờ đăng";
+  if (status === "cancelled") return "Đã dừng";
   if (status === "idle") return "Sẵn sàng";
   return status;
 }
@@ -682,7 +710,8 @@ function pageBarClass(status: string) {
   if (status === "success") return "bg-pine";
   if (status === "failed") return "bg-danger";
   if (status === "running" || status === "preparing") return "bg-amber";
-  if (status === "pending") return "bg-amber/40";
+  if (status === "pending" || status === "queued") return "bg-amber/40";
+  if (status === "cancelled") return "bg-line";
   return "bg-line";
 }
 
@@ -742,8 +771,15 @@ function PageRunCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">{page.name}</p>
           <p className={`mt-0.5 text-xs font-medium ${pageStatusTone(page.status)}`}>
-            {pageStatusLabel(page.status)}
+            {(page.status === "pending" || page.status === "queued") && page.runAt ? (
+              <WaitLine runAt={page.runAt} />
+            ) : (
+              page.stage || pageStatusLabel(page.status)
+            )}
           </p>
+          {(page.status === "pending" || page.status === "queued") && page.runAt && page.stage ? (
+            <p className="mt-0.5 text-[11px] leading-4 text-muted">{page.stage}</p>
+          ) : null}
         </div>
         {page.status !== "idle" ? (
           <StatusBadge status={page.status === "preparing" ? "running" : page.status} />
@@ -755,16 +791,17 @@ function PageRunCard({
           className={`h-full transition-[width] ${pageBarClass(page.status)}`}
           style={{
             width:
-              page.status === "success" || page.status === "failed"
+              page.status === "success" || page.status === "failed" || page.status === "cancelled"
                 ? "100%"
                 : page.status === "running" || page.status === "preparing"
                   ? "60%"
-                  : page.status === "pending"
+                  : page.status === "pending" || page.status === "queued"
                     ? "20%"
                     : "0%",
           }}
         />
       </div>
+      <JobLogList lines={page.log} />
 
       {page.status !== "idle" ? (
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-muted">
@@ -807,15 +844,15 @@ function PageRunCard({
                   Bình luận:{" "}
                   {page.commentStatus === "success"
                     ? "đã bình luận"
-                    : page.commentStatus === "pending"
-                      ? "đang bình luận"
+                    : page.commentStatus === "pending" || page.commentStatus === "waiting"
+                      ? page.stage || "chờ cả đợt đăng xong"
                       : page.commentStatus === "failed"
                         ? page.commentError || "bình luận lỗi"
                         : page.commentStatus}
                 </p>
               ) : null}
               {page.finishedAt ? <p>Xong lúc {formatWhen(page.finishedAt)}</p> : null}
-              {page.runAt && page.status === "pending" ? (
+              {page.runAt && (page.status === "pending" || page.status === "queued") ? (
                 <p>Dự kiến {formatWhen(page.runAt)}</p>
               ) : null}
               <div className="flex flex-wrap gap-3">
@@ -853,9 +890,12 @@ function PageProgressPanel({
   latest: ComposerBatch | null;
 }) {
   const [livePages, setLivePages] = useState<ComposerBatchPage[] | null>(null);
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
+  const [liveDelay, setLiveDelay] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const batchId = latest?.id ?? null;
   const batchActive =
-    latest != null && latest.status !== "finished" && latest.status !== "draft";
+    latest != null && latest.status !== "finished" && latest.status !== "draft" && latest.status !== "stopped";
 
   useEffect(() => {
     if (!batchId || !batchActive) {
@@ -876,11 +916,15 @@ function PageProgressPanel({
         fbPostId?: string | null;
         commentStatus?: string | null;
         commentError?: string | null;
+        stage?: string | null;
+        log?: { t: string; m: string }[];
         runAt?: string | null;
         startedAt?: string | null;
         finishedAt?: string | null;
       }[];
       const batchMessage = (data.batch?.message as string | undefined) ?? latest?.message ?? null;
+      setLiveStatus(typeof data.batch?.status === "string" ? data.batch.status : null);
+      setLiveDelay(typeof data.batch?.delaySeconds === "number" ? data.batch.delaySeconds : null);
       setLivePages(
         jobs.map((job) => {
           const known =
@@ -895,6 +939,8 @@ function PageProgressPanel({
             fbPostId: job.fbPostId ?? null,
             commentStatus: job.commentStatus ?? null,
             commentError: job.commentError ?? null,
+            stage: job.stage ?? null,
+            log: job.log ?? [],
             runAt: job.runAt ?? null,
             startedAt: job.startedAt ?? null,
             finishedAt: job.finishedAt ?? null,
@@ -902,8 +948,14 @@ function PageProgressPanel({
           };
         }),
       );
-      const done = data.batch?.status === "finished" || data.batch?.status === "draft";
-      if (!done) timer = window.setTimeout(load, 2500);
+      const commenting = jobs.some(
+        (job) => job.commentStatus === "pending" || job.commentStatus === "waiting",
+      );
+      const done =
+        data.batch?.status === "finished" ||
+        data.batch?.status === "draft" ||
+        data.batch?.status === "stopped";
+      if (!done || commenting) timer = window.setTimeout(load, 2000);
     }
 
     load();
@@ -911,7 +963,7 @@ function PageProgressPanel({
       stop = true;
       window.clearTimeout(timer);
     };
-  }, [batchId, batchActive, latest?.pages, pages]);
+  }, [batchId, batchActive, latest?.pages, latest?.message, pages, reloadKey]);
 
   const slots: ComposerBatchPage[] = (() => {
     if (selected.length > 0) {
@@ -937,6 +989,8 @@ function PageProgressPanel({
             fbPostId: source?.fbPostId ?? null,
             commentStatus: source?.commentStatus ?? null,
             commentError: source?.commentError ?? null,
+            stage: source?.stage ?? null,
+            log: source?.log ?? [],
             runAt: source?.runAt ?? null,
             startedAt: source?.startedAt ?? null,
             finishedAt: source?.finishedAt ?? null,
@@ -948,11 +1002,17 @@ function PageProgressPanel({
     return latest?.pages ?? [];
   })();
 
+  const delaySeconds = liveDelay ?? latest?.delaySeconds ?? 0;
+  const batchStatus = liveStatus ?? latest?.status ?? "";
   const delayLabel = latest
-    ? latest.delaySeconds === 0
+    ? delaySeconds === 0
       ? "Đăng nhanh"
-      : `Chờ ${latest.delaySeconds} giây giữa các Page`
+      : `Chờ ${delaySeconds} giây giữa các Page`
     : null;
+  const level =
+    slots.find((page) => page.status === "running") ??
+    slots.find((page) => page.commentStatus === "pending" || page.commentStatus === "waiting") ??
+    slots.find((page) => page.status === "pending" || page.status === "queued");
 
   return (
     <div className={`${cardClass} p-4 sm:p-5`}>
@@ -964,9 +1024,23 @@ function PageProgressPanel({
               ? `${slots.length} Page · ${delayLabel ?? "Chọn Page rồi đăng để theo dõi kết quả"}`
               : "Chọn Fanpage để hiện từng ô tiến độ."}
           </p>
+          {level ? (
+            <p className="mt-1 text-xs font-medium text-ink">
+              Mức: {(level.status === "pending" || level.status === "queued") && level.runAt ? <WaitLine runAt={level.runAt} /> : level.stage || pageStatusLabel(level.status)}
+              {level.name ? ` · ${level.name}` : ""}
+            </p>
+          ) : null}
         </div>
-        {latest ? <StatusBadge status={latest.status} /> : null}
+        {latest ? <StatusBadge status={batchStatus || latest.status} /> : null}
       </div>
+      {latest && batchId ? (
+        <BatchRunControls
+          id={batchId}
+          status={batchStatus || latest.status}
+          delaySeconds={delaySeconds}
+          onChanged={() => setReloadKey((value) => value + 1)}
+        />
+      ) : null}
       {slots.length === 0 ? (
         <p className="mt-3 text-sm text-muted">Chưa có Page nào.</p>
       ) : (
@@ -1094,7 +1168,9 @@ export function Composer({
     for (const file of incoming) {
       const kind = fileKind(file);
       if (!kind) {
-        problem = `${file.name}: chỉ nhận ảnh JPG, PNG, WEBP hoặc video MP4, WEBM, MOV.`;
+        problem = isHeic(file)
+          ? `${file.name}: ảnh HEIC của máy Mac hãy xuất JPG hoặc PNG rồi kéo lại.`
+          : `${file.name}: chỉ nhận ảnh JPG, PNG, WEBP hoặc video MP4, WEBM, MOV.`;
         continue;
       }
       if (kind === "video" && file.size > 80 * 1024 * 1024) {
@@ -1173,14 +1249,14 @@ export function Composer({
       setError("Nhập nội dung riêng cho từng tệp đang chọn.");
       return;
     }
-    const postDelay = paceValue(postMode, postGap, 10, 600);
-    const commentDelay = paceValue(commentMode, commentGap, 5, 180);
+    const postDelay = paceValue(postMode, postGap, 0, 600);
+    const commentDelay = paceValue(commentMode, commentGap, 0, 180);
     if (postDelay === null) {
-      setError("Giả lập đăng bài chờ từ 10 đến 600 giây.");
+      setError("Số giây chờ từ 0 đến 600. 0 là mức nhanh nhất.");
       return;
     }
     if (commentEnabled && commentDelay === null) {
-      setError("Giả lập bình luận chờ từ 5 đến 180 giây.");
+      setError("Số giây chờ bình luận từ 0 đến 180. 0 là mức nhanh nhất.");
       return;
     }
     const targets = chosen.length > 0 ? chosen : [null];
@@ -1292,14 +1368,14 @@ export function Composer({
     boxes.filter((box) => box.text.trim() || (box.image?.url && !box.image.cleared)).length;
   const pageCount = selected.length;
   const fileRuns = items.length === 0 ? 1 : items.filter((item) => item.picked).length;
-  const postDelay = paceValue(postMode, postGap, 10, 600);
+  const postDelay = paceValue(postMode, postGap, 0, 600);
   const postEstimate = (() => {
     if (pageCount === 0) return "Ước tính: chọn Fanpage để tính thời gian.";
     if (fileRuns === 0) return "Ước tính: chọn tệp để tính thời gian.";
     if (postMode === "fast" || postDelay === 0) {
       return `Ước tính: không chờ giữa ${pageCount} Page${fileRuns > 1 ? `, ${fileRuns} tệp` : ""}. Thời gian là lúc Facebook nhận bài.`;
     }
-    if (postDelay === null) return "Ước tính: nhập số giây từ 10 đến 600.";
+    if (postDelay === null) return "Ước tính: nhập số giây từ 0 đến 600.";
     if (pageCount === 1) return "Ước tính: một Page thì không có khoảng chờ.";
     const wait = fileRuns * (pageCount - 1) * postDelay;
     return `Ước tính chờ khoảng ${formatWait(wait)} giữa các Page.`;
@@ -1312,8 +1388,8 @@ export function Composer({
     const total = counts.reduce((sum, count) => sum + count, 0);
     if (total === 0) return "Ước tính: chưa có bình luận để tính.";
     if (commentMode === "fast") return "Ước tính: bình luận gửi liền nhau, không chờ thêm.";
-    const gap = paceValue("human", commentGap, 5, 180);
-    if (gap === null) return "Ước tính: nhập số giây từ 5 đến 180.";
+    const gap = paceValue("human", commentGap, 0, 180);
+    if (gap === null) return "Ước tính: nhập số giây từ 0 đến 180.";
     const wait = counts.reduce((sum, count) => sum + Math.max(0, count - 1) * gap, 0) * Math.max(fileRuns, 1);
     if (wait === 0) return "Ước tính: mỗi Page một bình luận, không có khoảng chờ.";
     return `Ước tính chờ thêm khoảng ${formatWait(wait)} cho các bình luận.`;
@@ -1505,7 +1581,7 @@ export function Composer({
               onDrop={(event) => {
                 event.preventDefault();
                 setDragOver(false);
-                addFiles(event.dataTransfer.files);
+                addFiles(filesFromDrop(event.dataTransfer));
               }}
               className={`rounded-xl border border-dashed p-3 ${
                 dragOver ? "border-pine bg-pine/5" : "border-line bg-paper/40"
@@ -1840,10 +1916,10 @@ export function Composer({
               onMode={setPostMode}
               seconds={postGap}
               onSeconds={setPostGap}
-              min={10}
+              min={0}
               max={600}
-              fastText="Đăng xong Page này là tới Page tiếp theo, nhanh nhất tool làm được."
-              humanText="Chờ giữa các Page giống người đang đăng. Bạn chỉnh số giây cho hợp nhịp."
+              fastText="Nhanh nhất: Page này xong là sang Page kế ngay, không chờ thêm."
+              humanText="Tự đặt số giây chờ. 0 là nhanh nhất. Không đặt số nhỏ hơn 0."
               estimate={postEstimate}
             />
             {commentEnabled ? (
@@ -1853,10 +1929,10 @@ export function Composer({
                 onMode={setCommentMode}
                 seconds={commentGap}
                 onSeconds={setCommentGap}
-                min={5}
+                min={0}
                 max={180}
-                fastText="Các bình luận của một Page gửi liền nhau ngay sau khi bài của Page đó lên."
-                humanText="Chờ giữa các bình luận của cùng một Page. Bạn chỉnh số giây."
+                fastText="Nhanh nhất: đợi đăng xong cả đợt, rồi gửi bình luận liền nhau."
+                humanText="Tự đặt số giây giữa các bình luận. 0 là nhanh nhất. Không đặt số nhỏ hơn 0."
                 estimate={commentEstimate}
               />
             ) : null}
@@ -1870,7 +1946,7 @@ export function Composer({
               />
             </label>
             <p className="text-sm leading-5 text-muted">
-              Đến giờ đã chọn, tool mới đăng bài. Fanpage chỉ bình luận sau khi bài của page đó đã lên.
+              Đến giờ đã chọn, tool mới đăng bài. Bình luận chỉ chạy sau khi mọi Page trong đợt đã đăng xong.
             </p>
 
             {error ? <ErrorNote>{error}</ErrorNote> : null}

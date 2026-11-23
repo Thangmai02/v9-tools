@@ -1,0 +1,3 @@
+ALTER TABLE "PostBatch" ADD COLUMN "stopAfterJobId" TEXT;
+ALTER TABLE "PostJob" ADD COLUMN "stage" TEXT;
+ALTER TABLE "PostJob" ADD COLUMN "log" TEXT;

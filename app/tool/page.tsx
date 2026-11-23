@@ -3,6 +3,7 @@ import { userHasAdminRole } from "@/lib/admin";
 import { memberHasPro, requireMemberPage } from "@/lib/auth";
 import { resolvePageOwnerIds } from "@/lib/facebook-keys";
 import { parseStoredComments } from "@/lib/comment-items";
+import { parseJobLog } from "@/lib/job-log";
 import { Composer, type ComposerDraft } from "@/components/composer";
 import { ToolShell } from "@/components/tool-shell";
 
@@ -45,7 +46,7 @@ function counts(jobs: { status: string }[]) {
   return {
     success: jobs.filter((job) => job.status === "success").length,
     failed: jobs.filter((job) => job.status === "failed").length,
-    pending: jobs.filter((job) => job.status === "pending").length,
+    pending: jobs.filter((job) => job.status === "pending" || job.status === "queued").length,
     running: jobs.filter((job) => job.status === "running").length,
     total: jobs.length,
   };
@@ -90,6 +91,8 @@ export default async function ToolPage({
             fbPostId: true,
             commentStatus: true,
             commentError: true,
+            stage: true,
+            log: true,
             runAt: true,
             startedAt: true,
             finishedAt: true,
@@ -181,6 +184,8 @@ export default async function ToolPage({
               fbPostId: job.fbPostId,
               commentStatus: job.commentStatus,
               commentError: job.commentError,
+              stage: job.stage,
+              log: parseJobLog(job.log).slice(-12),
               runAt: job.runAt?.toISOString() ?? null,
               startedAt: job.startedAt?.toISOString() ?? null,
               finishedAt: job.finishedAt?.toISOString() ?? null,

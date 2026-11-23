@@ -1,7 +1,9 @@
 import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
+import { appendJobLog } from "@/lib/job-log";
 import { parseStoredComments, type StoredComment } from "@/lib/comment-items";
 import { prisma } from "@/lib/db";
+import { portableUploadPath, thisFileHost, uploadAbsolute } from "@/lib/upload-path";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
@@ -9,7 +11,10 @@ const MAX_COVER_BYTES = 3 * 1024 * 1024;
 
 const IMAGE_TYPES = new Map([
   ["image/jpeg", ".jpg"],
+  ["image/jpg", ".jpg"],
+  ["image/pjpeg", ".jpg"],
   ["image/png", ".png"],
+  ["image/x-png", ".png"],
   ["image/webp", ".webp"],
 ]);
 
@@ -21,7 +26,10 @@ const VIDEO_TYPES = new Map([
 
 const COVER_TYPES = new Map([
   ["image/jpeg", ".jpg"],
+  ["image/jpg", ".jpg"],
+  ["image/pjpeg", ".jpg"],
   ["image/png", ".png"],
+  ["image/x-png", ".png"],
   ["image/webp", ".webp"],
 ]);
 
@@ -81,8 +89,16 @@ function parseLink(value: string) {
 }
 
 function sniffType(file: File, types: Map<string, string>) {
-  if (file.type && types.has(file.type)) return file.type;
   const name = file.name.toLowerCase();
+  if (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    name.endsWith(".heic") ||
+    name.endsWith(".heif")
+  ) {
+    throw new Error("Ảnh HEIC của máy Mac hãy xuất JPG hoặc PNG rồi kéo lại.");
+  }
+  if (file.type && types.has(file.type)) return file.type;
   if ((name.endsWith(".jpg") || name.endsWith(".jpeg")) && types.has("image/jpeg")) return "image/jpeg";
   if (name.endsWith(".png") && types.has("image/png")) return "image/png";
   if (name.endsWith(".webp") && types.has("image/webp")) return "image/webp";
@@ -196,8 +212,8 @@ export function readBatchFields(source: {
     String(source.delaySeconds) !== ""
   ) {
     delaySeconds = Number(source.delaySeconds);
-    if (!Number.isInteger(delaySeconds) || (delaySeconds !== 0 && (delaySeconds < 10 || delaySeconds > 600))) {
-      throw new Error("Đăng nhanh không chờ. Giả lập người dùng chờ từ 10 đến 600 giây.");
+    if (!Number.isInteger(delaySeconds) || delaySeconds < 0 || delaySeconds > 600) {
+      throw new Error("Số giây chờ từ 0 đến 600. 0 là mức nhanh nhất, không đặt nhỏ hơn.");
     }
   }
   let commentDelaySeconds = 0;
@@ -209,9 +225,10 @@ export function readBatchFields(source: {
     commentDelaySeconds = Number(source.commentDelaySeconds);
     if (
       !Number.isInteger(commentDelaySeconds) ||
-      (commentDelaySeconds !== 0 && (commentDelaySeconds < 5 || commentDelaySeconds > 180))
+      commentDelaySeconds < 0 ||
+      commentDelaySeconds > 180
     ) {
-      throw new Error("Bình luận nhanh không chờ. Giả lập người dùng chờ từ 5 đến 180 giây.");
+      throw new Error("Số giây chờ bình luận từ 0 đến 180. 0 là mức nhanh nhất, không đặt nhỏ hơn.");
     }
   }
   const pageIds = Array.isArray(source.pageIds) ? source.pageIds.map(String) : [];
@@ -255,11 +272,12 @@ export function readBatchFields(source: {
 
 async function removeStored(relative: string | null) {
   if (!relative) return;
-  const absolute = path.resolve(process.cwd(), relative);
-  const root = path.resolve(process.cwd(), "data", "uploads") + path.sep;
-  const left = process.platform === "win32" ? absolute.toLowerCase() : absolute;
-  const right = process.platform === "win32" ? root.toLowerCase() : root;
-  if (!left.startsWith(right)) return;
+  let absolute: string;
+  try {
+    absolute = uploadAbsolute(relative);
+  } catch {
+    return;
+  }
   await unlink(absolute).catch(() => undefined);
 }
 
@@ -273,8 +291,9 @@ async function writeMedia(
   if (file.size > maxBytes) {
     throw new Error(`${label} tối đa ${Math.round(maxBytes / (1024 * 1024))}MB.`);
   }
-  const relative = path.join("data", "uploads", `${stem}${extension}`);
-  const absolute = path.join(process.cwd(), relative);
+  const safeStem = stem.replace(/[^A-Za-z0-9._-]/g, "_");
+  const relative = portableUploadPath(`${safeStem}${extension}`);
+  const absolute = uploadAbsolute(relative);
   await mkdir(path.dirname(absolute), { recursive: true });
   await writeFile(absolute, Buffer.from(await file.arrayBuffer()));
   return relative;
@@ -361,6 +380,7 @@ export async function saveBatch(
         delaySeconds: input.delaySeconds,
         commentDelaySeconds: input.commentDelaySeconds,
         status: "preparing",
+        fileHost: thisFileHost(),
       },
     }));
 
@@ -441,7 +461,7 @@ export async function saveBatch(
       for (let index = 0; index < slots.length; index += 1) {
         const slot = slots[index];
         const earlier = slot.keepIndex != null ? previous[slot.keepIndex]?.imagePath ?? null : null;
-        let imagePath = slot.clearImage ? null : earlier;
+        let imagePath = slot.clearImage ? null : earlier ? portableUploadPath(earlier) : null;
         if (slot.image && slot.image.size > 0) {
           const ext = IMAGE_TYPES.get(sniffType(slot.image, IMAGE_TYPES));
           if (!ext) throw new Error("Ảnh bình luận chỉ nhận JPG, PNG hoặc WEBP.");
@@ -532,7 +552,24 @@ export async function saveBatch(
             fbPageId: page.pageId,
             pageName: page.name,
             position,
-            status: publishing ? "pending" : "draft",
+            status: publishing ? "queued" : "draft",
+            stage: publishing
+              ? position === 0
+                ? input.scheduledAt
+                  ? "Chờ đến giờ hẹn"
+                  : "Sắp đăng"
+                : "Chờ lượt"
+              : null,
+            log: publishing
+              ? appendJobLog(
+                  null,
+                  position === 0
+                    ? input.scheduledAt
+                      ? "Chờ đến giờ đã hẹn."
+                      : "Trong hàng chờ, sắp đăng."
+                    : "Chờ các Page phía trước.",
+                )
+              : null,
             runAt: publishing && position === 0 ? firstRun : null,
             commentStatus: "skipped",
             commentMessage: first?.message ?? null,
@@ -556,9 +593,10 @@ export async function saveBatch(
         commentImagePath: input.separateComments ? null : firstShared?.imagePath ?? null,
         separateComments: input.separateComments,
         scheduledAt: input.scheduledAt,
-        imagePath,
-        videoPath,
-        coverPath,
+        imagePath: imagePath ? portableUploadPath(imagePath) : null,
+        videoPath: videoPath ? portableUploadPath(videoPath) : null,
+        coverPath: coverPath ? portableUploadPath(coverPath) : null,
+        fileHost: thisFileHost(),
         status: publishing ? "queued" : "draft",
       },
     });
