@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { userHasAdminRole } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { grantPro, revokePro } from "@/lib/license";
@@ -14,7 +15,7 @@ export async function POST(
 
   const { id } = await context.params;
   const user = await prisma.user.findFirst({
-    where: { id, role: "member" },
+    where: { id, role: { in: ["member", "admin"] } },
   });
   if (!user) {
     return NextResponse.json({ error: "Không thấy tài khoản." }, { status: 404 });
@@ -24,7 +25,7 @@ export async function POST(
     action?: string;
   } | null;
 
-  if (body?.action === "upgrade") {
+  if (body?.action === "upgrade" || (body?.action === "downgrade" && userHasAdminRole(user))) {
     const licenseKey = await grantPro(user.id);
     return NextResponse.json({ ok: true, plan: "pro", licenseKey });
   }

@@ -11,7 +11,7 @@ export async function GET() {
 
   const users = await prisma.user.findMany({
     where: {
-      role: "member",
+      role: { in: ["member", "admin"] },
       NOT: {
         OR: [{ email: "ban@local" }, { email: { startsWith: "key-" } }],
       },

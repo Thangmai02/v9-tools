@@ -2,8 +2,13 @@ services:
   - type: web
     name: v9-tools
     runtime: docker
-    plan: free
+    # Free không có đĩa bền — mỗi restart xóa SQLite. Starter + disk giữ user và mã khóa.
+    plan: starter
     healthCheckPath: /
+    disk:
+      name: v9-data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
