@@ -46,7 +46,8 @@ export function AccountChip({
     window.location.href = "/";
   }
 
-  const borderTone = admin && pro ? "both" : admin ? "admin" : pro ? "pro" : null;
+  const showPro = pro && !admin;
+  const borderTone = admin ? "admin" : showPro ? "pro" : null;
 
   const chipButton = (
     <button
@@ -91,14 +92,14 @@ export function AccountChip({
           role="menu"
           className="absolute right-0 z-40 mt-2 w-96 rounded-2xl border border-line bg-surface p-4 shadow-[0_10px_28px_rgba(27,25,20,0.12)]"
         >
-          <ProfileFrame admin={admin} pro={pro}>
+          <ProfileFrame admin={admin} pro={showPro}>
             <div className="flex items-center gap-3.5 rounded-[11px] bg-paper/90 px-4 py-4">
               <AvatarFace src={avatarUrl} initial={initial} size="lg" tone={borderTone} />
               <div className="min-w-0 flex-1">
                 <p className="flex min-w-0 items-center gap-1.5 text-lg font-semibold leading-snug text-ink">
                   <span className="truncate">{label}</span>
                   {admin ? <AdminNeonBadge className="h-5 w-5 shrink-0" /> : null}
-                  {pro ? <ProNeonBadge className="shrink-0" /> : null}
+                  {showPro ? <ProNeonBadge className="shrink-0" /> : null}
                 </p>
                 {email ? <p className="mt-1.5 truncate text-[15px] leading-snug text-muted">{email}</p> : null}
               </div>

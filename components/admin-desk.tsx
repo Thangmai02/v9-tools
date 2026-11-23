@@ -101,7 +101,7 @@ export function AdminLogin() {
       setPending(false);
       return;
     }
-    window.location.href = "/admin";
+    window.location.href = "/admin?welcome=1";
   }
 
   return (

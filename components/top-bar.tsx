@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AccountChip } from "@/components/account-chip";
+import { WelcomeNotice } from "@/components/welcome-notice";
 import { AppNav } from "@/components/app-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -77,6 +78,7 @@ export function TopBar({
           </div>
         </div>
       </header>
+      <WelcomeNotice name={name} admin={admin} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   );

@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     }
 
     const token = await sealSession({ role: "member", sub: user.id });
-    const response = finish(request, "/tool");
+    const response = finish(request, "/tool?welcome=1");
     response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
     return response;
   } catch (error) {

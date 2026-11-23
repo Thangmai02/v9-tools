@@ -124,7 +124,7 @@ export function LoginForm() {
       setPending(false);
       return;
     }
-    window.location.href = "/tool";
+    window.location.href = "/tool?welcome=1";
   }
 
   return (
