@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { stopBatch } from "@/lib/batch-run";
+import { forceStopBatch, pauseBatch, resumeBatch, stopBatch } from "@/lib/batch-run";
 import { requireProUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const gate = await requireProUser();
@@ -19,8 +19,24 @@ export async function POST(
   if (!owned) {
     return NextResponse.json({ error: "Không thấy đợt đăng." }, { status: 404 });
   }
+  let action: "pause" | "resume" | "force" | "stop" = "stop";
   try {
-    const result = await stopBatch(id);
+    const body = await request.json();
+    if (body?.force === true || body?.action === "force") action = "force";
+    else if (body?.action === "pause") action = "pause";
+    else if (body?.action === "resume") action = "resume";
+  } catch {
+    action = "stop";
+  }
+  try {
+    const result =
+      action === "force"
+        ? await forceStopBatch(id)
+        : action === "pause"
+          ? await pauseBatch(id)
+          : action === "resume"
+            ? await resumeBatch(id)
+            : await stopBatch(id);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Không dừng được.";

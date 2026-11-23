@@ -51,6 +51,7 @@ export function statusLabel(status: string) {
     draft: "Nháp",
     preparing: "Đang chuẩn bị",
     running: "Đang đăng",
+    paused: "Tạm dừng",
     stopping: "Đang dừng",
     stopped: "Đã dừng",
     cancelled: "Đã dừng",
@@ -77,7 +78,7 @@ function statusBadgeClass(status: string) {
   if (status === "running" || status === "preparing") {
     return `${base} bg-surface text-pine ring-1 ring-inset ring-pine/40`;
   }
-  if (status === "stopping" || status === "free" || status === "pending" || status === "queued") {
+  if (status === "paused" || status === "stopping" || status === "free" || status === "pending" || status === "queued") {
     return `${base} bg-amber/10 text-amber ring-1 ring-inset ring-amber/25`;
   }
   return `${base} bg-paper text-muted ring-1 ring-inset ring-line`;
@@ -86,7 +87,7 @@ function statusBadgeClass(status: string) {
 function statusDotClass(status: string) {
   if (status === "failed") return "h-1.5 w-1.5 rounded-full bg-danger";
   if (status === "running" || status === "preparing") return "h-1.5 w-1.5 rounded-full bg-pine";
-  if (status === "stopping" || status === "free" || status === "pending" || status === "queued") {
+  if (status === "paused" || status === "stopping" || status === "free" || status === "pending" || status === "queued") {
     return "h-1.5 w-1.5 rounded-full bg-amber";
   }
   return "h-1.5 w-1.5 rounded-full bg-muted";

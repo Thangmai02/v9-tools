@@ -22,6 +22,37 @@ const POST_WAIT = ["pending", "queued"];
 const COMMENT_WAIT = ["pending", "waiting"];
 const REACTION_WAIT = ["pending", "waiting"];
 
+async function batchIsStopped(batchId: string) {
+  const batch = await prisma.postBatch.findUnique({
+    where: { id: batchId },
+    select: { status: true },
+  });
+  return batch?.status === "stopped";
+}
+
+async function leaveIfStopped(jobId: string, batchId: string, fbPostId?: string | null) {
+  if (!(await batchIsStopped(batchId))) return false;
+  const current = await prisma.postJob.findUnique({
+    where: { id: jobId },
+    select: { log: true, status: true },
+  });
+  await prisma.postJob.update({
+    where: { id: jobId },
+    data: {
+      status: current?.status === "success" ? "success" : "cancelled",
+      fbPostId: fbPostId || undefined,
+      stage: "Đã dừng",
+      log: appendJobLog(current?.log, "Buộc dừng. Không đăng tiếp và không gửi bình luận."),
+      commentStatus: "skipped",
+      commentNextAt: null,
+      reactionStatus: "skipped",
+      reactionNextAt: null,
+      finishedAt: new Date(),
+    },
+  });
+  return true;
+}
+
 async function note(
   jobId: string,
   stage: string,
@@ -31,8 +62,9 @@ async function note(
   try {
     const current = await prisma.postJob.findUnique({
       where: { id: jobId },
-      select: { log: true },
+      select: { log: true, status: true },
     });
+    if (current?.status === "cancelled") return;
     await prisma.postJob.update({
       where: { id: jobId },
       data: { ...extra, stage, log: appendJobLog(current?.log, message) },
@@ -105,7 +137,7 @@ async function scheduleNext(batchId: string, delaySeconds: number, finishedJobId
     where: { id: batchId },
     select: { status: true, stopAfterJobId: true },
   });
-  if (!batch) return;
+  if (!batch || batch.status === "paused") return;
   if (
     batch.status === "stopped" ||
     batch.status === "stopping" ||
@@ -149,6 +181,7 @@ async function finishPendingComments() {
   const now = new Date();
   const host = thisFileHost();
   const readyBatch = {
+    status: { notIn: ["stopped", "paused"] },
     jobs: { none: { status: { in: ["pending", "queued", "running"] } } },
   };
   const due = {
@@ -202,6 +235,24 @@ async function finishPendingComments() {
       let waiting = false;
       const gap = job.batch.commentDelaySeconds;
       while (sent < items.length) {
+        const hold = await prisma.postBatch.findUnique({
+          where: { id: job.batchId },
+          select: { status: true },
+        });
+        if (hold?.status === "paused") {
+          await prisma.postJob.update({
+            where: { id: job.id },
+            data: { commentStatus: "waiting", commentNextAt: null, commentSent: sent },
+          });
+          await note(job.id, "Tạm dừng", "Tạm dừng. Bình luận gửi tiếp khi bấm Tiếp tục.");
+          waiting = true;
+          break;
+        }
+        if (hold?.status === "stopped") {
+          await leaveIfStopped(job.id, job.batchId, job.fbPostId);
+          waiting = true;
+          break;
+        }
         const item = items[sent];
         if (!item.message && !item.imagePath) {
           sent += 1;
@@ -329,6 +380,10 @@ async function recoverStuck() {
     include: { batch: true },
   });
   for (const job of stuck) {
+    if (job.batch.status === "stopped") {
+      await leaveIfStopped(job.id, job.batchId);
+      continue;
+    }
     await note(job.id, "Lỗi đăng", "Bị gián đoạn trước khi đăng xong.", {
       status: "failed",
       error: "Bị gián đoạn trước khi đăng xong.",
@@ -558,6 +613,7 @@ async function honorStop(batchId: string, finishedJobId: string) {
     select: { status: true, stopAfterJobId: true },
   });
   if (!batch) return;
+  if (batch.status === "paused") return;
   if (
     batch.status === "stopped" ||
     batch.status === "stopping" ||
@@ -576,28 +632,37 @@ async function runFastJob(jobId: string) {
   if (!job || job.status !== "running") return;
   try {
     const uploaded = await uploadPost(job);
+    if (await leaveIfStopped(job.id, job.batchId, uploaded.fbPostId)) {
+      await refreshBatch(job.batchId);
+      return;
+    }
     const wantComment = job.batch.commentEnabled && commentHasContent(commentsForJob(job));
     const wantReaction = job.batch.reactionEnabled;
+    const followUp = [
+      wantComment ? "bình luận" : "",
+      wantReaction ? "Thích" : "",
+    ].filter(Boolean);
     await prisma.postJob.update({
       where: { id: job.id },
       data: {
+        status: "success",
         fbPostId: uploaded.fbPostId,
         error: null,
         coverWarning: uploaded.coverWarning,
-        commentStatus: wantComment ? "running" : "skipped",
-        reactionStatus: wantReaction ? "running" : "skipped",
+        commentStatus: wantComment ? "waiting" : "skipped",
+        reactionStatus: wantReaction ? "waiting" : "skipped",
         reactionError: null,
         reactionNextAt: null,
+        finishedAt: new Date(),
       },
     });
-    job.fbPostId = uploaded.fbPostId;
-    await note(job.id, "Đã nhận bài", "Facebook đã nhận bài. Luồng này gửi bình luận rồi thả Thích.");
-    if (wantComment) await deliverComments(job, uploaded.pageId, uploaded.token);
-    if (wantReaction) await deliverLike(job, uploaded.pageId, uploaded.token);
-    await prisma.postJob.update({
-      where: { id: job.id },
-      data: { status: "success", finishedAt: new Date() },
-    });
+    await note(
+      job.id,
+      "Đã đăng",
+      followUp.length
+        ? `Đã đăng ${job.pageName}. Facebook đã nhận bài. ${followUp.join(" và ")} gửi sau khi các bài đang tải xong.`
+        : `Đã đăng ${job.pageName}. Facebook đã nhận bài.`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Đăng bài thất bại.";
     const current = await prisma.postJob.findUnique({
@@ -629,7 +694,7 @@ async function startParallelJobs() {
     where: {
       status: { in: POST_WAIT },
       runAt: { lte: now },
-      batch: { fileHost: host, pace: "fast", status: { notIn: ["stopped", "stopping"] } },
+      batch: { fileHost: host, pace: "fast", status: { notIn: ["stopped", "paused"] } },
     },
     include: { batch: true },
     orderBy: [{ runAt: "asc" }, { position: "asc" }],
@@ -655,7 +720,13 @@ async function startParallelJobs() {
   let started = false;
   for (const job of candidates) {
     if (globalBusy >= 8) break;
+    if (job.batch.status === "stopping" && job.batch.stopAfterJobId !== job.id) continue;
     if (job.batch.stopAfterJobId != null && job.batch.stopAfterJobId !== job.id) continue;
+    const fresh = await prisma.postBatch.findUnique({
+      where: { id: job.batchId },
+      select: { status: true },
+    });
+    if (!fresh || fresh.status === "paused" || fresh.status === "stopped") continue;
     const userRunning = runningByUser.get(job.batch.userId) ?? 0;
     const cap = Math.min(8, Math.max(1, capByUser.get(job.batch.userId) ?? job.batch.concurrency));
     if (userRunning >= cap) continue;
@@ -664,9 +735,9 @@ async function startParallelJobs() {
       data: { status: "running", startedAt: new Date(), stage: "Đang chuẩn bị" },
     });
     if (claim.count !== 1) continue;
-    if (job.batch.status !== "stopping") {
-      await prisma.postBatch.update({
-        where: { id: job.batchId },
+    if (fresh.status !== "stopping") {
+      await prisma.postBatch.updateMany({
+        where: { id: job.batchId, status: { notIn: ["paused", "stopped", "stopping"] } },
         data: { status: "running" },
       });
     }
@@ -688,7 +759,7 @@ async function publishDue() {
     where: {
       status: { in: POST_WAIT },
       runAt: { lte: now },
-      batch: { fileHost: host, pace: "human" },
+      batch: { fileHost: host, pace: "human", status: { notIn: ["stopped", "paused"] } },
     },
     orderBy: { runAt: "asc" },
     include: { batch: true },
@@ -698,7 +769,7 @@ async function publishDue() {
       where: {
         status: { in: POST_WAIT },
         runAt: { lte: now },
-        batch: { fileHost: null },
+        batch: { fileHost: null, status: { notIn: ["stopped", "paused"] } },
       },
       orderBy: { runAt: "asc" },
       include: { batch: true },
@@ -730,21 +801,31 @@ async function publishDue() {
     return true;
   }
 
+  const fresh = await prisma.postBatch.findUnique({
+    where: { id: job.batchId },
+    select: { status: true },
+  });
+  if (!fresh || fresh.status === "paused" || fresh.status === "stopped") return false;
+
   const claim = await prisma.postJob.updateMany({
     where: { id: job.id, status: { in: POST_WAIT } },
     data: { status: "running", startedAt: new Date(), stage: "Đang chuẩn bị" },
   });
   if (claim.count !== 1) return true;
 
-  if (job.batch.status !== "stopping") {
-    await prisma.postBatch.update({
-      where: { id: job.batchId },
+  if (fresh.status !== "stopping") {
+    await prisma.postBatch.updateMany({
+      where: { id: job.batchId, status: { notIn: ["paused", "stopped", "stopping"] } },
       data: { status: "running" },
     });
   }
 
   try {
     const uploaded = await uploadPost(job);
+    if (await leaveIfStopped(job.id, job.batchId, uploaded.fbPostId)) {
+      await refreshBatch(job.batchId);
+      return true;
+    }
     const wantComment = job.batch.commentEnabled && commentHasContent(commentsForJob(job));
     const wantReaction = job.batch.reactionEnabled;
     await prisma.postJob.update({
@@ -770,6 +851,10 @@ async function publishDue() {
       doneBits.join(" "),
     );
   } catch (error) {
+    if (await leaveIfStopped(job.id, job.batchId)) {
+      await refreshBatch(job.batchId);
+      return true;
+    }
     const message = error instanceof Error ? error.message : "Đăng bài thất bại.";
     await prisma.postJob.update({
       where: { id: job.id },
@@ -790,7 +875,7 @@ async function finishPendingReactions() {
       status: "success",
       reactionStatus: { in: REACTION_WAIT },
       OR: [{ reactionNextAt: null }, { reactionNextAt: { lte: now } }],
-      batch: { reactionEnabled: true },
+      batch: { reactionEnabled: true, status: { notIn: ["stopped", "paused"] } },
     },
     include: { batch: true },
     orderBy: { finishedAt: "asc" },
@@ -866,21 +951,31 @@ async function finishPendingReactions() {
   return true;
 }
 
+async function fastPostsLeft() {
+  const now = new Date();
+  const host = thisFileHost();
+  return prisma.postJob.count({
+    where: {
+      batch: { pace: "fast", fileHost: host, status: { notIn: ["stopped", "paused"] } },
+      OR: [
+        { status: "running" },
+        { status: { in: POST_WAIT }, runAt: { lte: now } },
+      ],
+    },
+  });
+}
+
 async function tick() {
   await recoverStuck();
   const started = await startParallelJobs();
   if (await publishDue()) return true;
-  if (await finishPendingReactions()) return true;
-  const commented = await finishPendingComments();
-  if (started || commented) return true;
-  const busy = await prisma.postJob.count({
-    where: { status: "running", batch: { pace: "fast" } },
-  });
-  if (busy > 0) {
-    await sleep(400);
+  const posting = await fastPostsLeft();
+  if (posting > 0) {
+    await sleep(started ? 200 : 400);
     return true;
   }
-  return false;
+  if (await finishPendingReactions()) return true;
+  return finishPendingComments();
 }
 
 async function main() {

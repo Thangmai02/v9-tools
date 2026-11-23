@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatClock } from "@/components/ui";
 import type { JobLogLine } from "@/lib/job-log";
 
-const ACTIVE = new Set(["queued", "running", "stopping", "preparing"]);
+const ACTIVE = new Set(["queued", "running", "stopping", "preparing", "paused"]);
 
 function secondsLeft(runAt: string) {
   return Math.max(0, Math.ceil((new Date(runAt).getTime() - Date.now()) / 1000));
@@ -42,19 +42,23 @@ export function JobLogList({ lines }: { lines?: JobLogLine[] | null }) {
 
 export function BatchRunControls({
   id,
+  ids,
   status,
   delaySeconds,
   onChanged,
+  onForceStop,
 }: {
   id: string;
+  ids?: string[];
   status: string;
   delaySeconds: number;
   onChanged?: () => void;
+  onForceStop?: () => void;
 }) {
   const [seconds, setSeconds] = useState(String(delaySeconds));
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"stop" | "pace" | null>(null);
+  const [busy, setBusy] = useState<"pause" | "resume" | "force" | "pace" | null>(null);
 
   useEffect(() => {
     setSeconds(String(delaySeconds));
@@ -82,31 +86,40 @@ export function BatchRunControls({
     onChanged?.();
   }
 
-  async function stop() {
-    setBusy("stop");
+  async function run(action: "pause" | "resume" | "force") {
+    setBusy(action);
     setError("");
     setNote("");
-    const response = await fetch(`/api/batches/${id}/stop`, { method: "POST" });
-    const data = await response.json();
+    const targets = [...new Set((ids && ids.length > 0 ? ids : [id]).filter(Boolean))];
+    for (const target of targets) {
+      const response = await fetch(`/api/batches/${target}/stop`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setBusy(null);
+        setError(data.error || "Không làm được.");
+        return;
+      }
+    }
     setBusy(null);
-    if (!response.ok) {
-      setError(data.error || "Không dừng được.");
+    if (action === "force") {
+      setNote("Đã ngưng hết. Bài chưa tải xong không đăng tiếp.");
+      onForceStop?.();
       return;
     }
-    setNote(
-      data.pageName
-        ? `Đăng nốt ${data.pageName} rồi dừng.`
-        : "Đã dừng. Không còn Page nào đang chờ.",
-    );
+    setNote(action === "pause" ? "Đã tạm dừng. Bài chưa đăng vẫn giữ." : "Đã tiếp tục các bài còn lại.");
     onChanged?.();
   }
 
   return (
     <div className="mt-3 space-y-2 rounded-xl border border-line bg-paper/50 p-3">
       <p className="text-xs leading-5 text-muted">
-        {status === "stopping"
-          ? "Đang đăng nốt Page gần nhất. Có thể đặt 0 giây để Page đó đăng ngay."
-          : "Đổi giây chờ cho Page chưa đăng, hoặc dừng sau bài gần nhất."}
+        {status === "paused" || status === "stopping"
+          ? "Đang tạm dừng. Tiếp tục để đăng các bài còn lại. Buộc dừng thì ngưng hẳn."
+          : "Tạm dừng giữ bài chưa đăng. Buộc dừng thì ngưng hẳn, không tiếp tục được."}
       </p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs font-medium text-ink">
@@ -129,13 +142,32 @@ export function BatchRunControls({
         >
           {busy === "pace" ? "Đang áp dụng..." : "Áp dụng"}
         </button>
+        {status === "paused" || status === "stopping" ? (
+          <button
+            type="button"
+            onClick={() => run("resume")}
+            disabled={busy !== null}
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink hover:border-pine/40 disabled:opacity-50"
+          >
+            {busy === "resume" ? "Đang tiếp tục..." : "Tiếp tục"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => run("pause")}
+            disabled={busy !== null}
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink hover:border-pine/40 disabled:opacity-50"
+          >
+            {busy === "pause" ? "Đang dừng..." : "Tạm dừng"}
+          </button>
+        )}
         <button
           type="button"
-          onClick={stop}
-          disabled={busy !== null || status === "stopping"}
+          onClick={() => run("force")}
+          disabled={busy !== null}
           className="inline-flex h-9 items-center justify-center rounded-lg border border-danger/30 bg-surface px-3 text-xs font-semibold text-danger hover:bg-danger/5 disabled:opacity-50"
         >
-          {status === "stopping" ? "Sẽ dừng sau bài này" : busy === "stop" ? "Đang dừng..." : "Dừng sau bài này"}
+          {busy === "force" ? "Đang ngưng..." : "Buộc dừng"}
         </button>
       </div>
       {note ? <p className="text-xs text-pine">{note}</p> : null}
