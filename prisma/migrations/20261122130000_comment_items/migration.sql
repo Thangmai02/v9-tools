@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "PostJob" ADD COLUMN "commentItems" TEXT;
-ALTER TABLE "PostJob" ADD COLUMN "commentSent" INTEGER NOT NULL DEFAULT 0;

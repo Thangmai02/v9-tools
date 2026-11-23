@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -22,6 +22,8 @@ model User {
   licenseKeys   LicenseKey[]
   facebook      FacebookAccount?
   batches       PostBatch[]
+  campJobs      CampJob[]
+  campTemplates CampTemplate[]
 }
 
 model FacebookKey {
@@ -122,4 +124,48 @@ model PostJob {
 
   @@index([status, runAt])
   @@index([batchId, position])
+}
+
+model CampJob {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId      String
+  adAccountId String
+  campaignId  String?
+  adSetId     String?
+  adId        String?
+  status      String   @default("pending")
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/** Khuôn mẫu / bộ khung Ads — nhập từ mẫu CSV rồi chỉnh, tool chạy chỉ đọc thông số này. */
+model CampTemplate {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  namePrefix   String   @default("V9 Camp")
+  objective    String   @default("engagement")
+  budgetType   String   @default("daily")
+  budgetAmount Float
+  days         Int      @default(7)
+  countries    String   @default("VN")
+  ageMin       Int      @default(18)
+  ageMax       Int      @default(65)
+  gender       String   @default("all")
+  cta          String   @default("LEARN_MORE")
+  adStatus     String   @default("PAUSED")
+  pageIdFb     String?
+  bidStrategy  String   @default("LOWEST_COST_WITHOUT_CAP")
+  bidAmount    Float?
+  targetingJson String?
+  sourceMeta   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, updatedAt])
 }

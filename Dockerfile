@@ -15,7 +15,6 @@ RUN npx prisma generate && npm run build
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
-ENV DATABASE_URL="file:/app/data/app.db"
 
 RUN mkdir -p /app/data/uploads
 

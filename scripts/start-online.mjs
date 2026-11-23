@@ -6,8 +6,9 @@ const dataDir = path.resolve(process.cwd(), "data");
 mkdirSync(dataDir, { recursive: true });
 mkdirSync(path.join(dataDir, "uploads"), { recursive: true });
 
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = `file:${path.join(dataDir, "app.db")}`;
+if (!process.env.DATABASE_URL?.startsWith("postgres")) {
+  console.error("Thiếu DATABASE_URL Postgres (Neon/Supabase).");
+  process.exit(1);
 }
 
 function run(command, args, extraEnv = {}) {
