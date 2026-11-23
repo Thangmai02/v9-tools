@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { shellClass } from "@/components/ui";
+import { readSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,9 @@ const steps = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await readSession();
+  const visibleSteps = session ? steps.filter((step) => step.title !== "Tạo tài khoản") : steps;
   return (
     <>
       <SiteHeader />
@@ -82,7 +85,7 @@ export default function HomePage() {
 
         <section className="border-t border-line bg-card/35 backdrop-blur-[1px]">
           <div className={`${shellClass} grid gap-4 py-14 md:grid-cols-3 xl:gap-6`}>
-            {steps.map((step, index) => (
+            {visibleSteps.map((step, index) => (
               <article key={step.title} className="rounded-2xl border border-line bg-card p-5">
                 <p className="text-sm font-semibold text-pine">0{index + 1}</p>
                 <h2 className="mt-2 text-lg font-semibold text-ink">{step.title}</h2>
