@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import { BatchView } from "@/components/batch-view";
 import { TopBar } from "@/components/top-bar";
 import { userHasAdminRole } from "@/lib/admin";
-import { memberHasPro, resolveMember } from "@/lib/auth";
+import { memberHasPro, requireMemberPage } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +10,7 @@ export default async function BatchPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await resolveMember();
-  if (!user) redirect("/login");
+  const user = await requireMemberPage();
   const isPro = await memberHasPro(user.id, user.plan);
   const isAdmin = userHasAdminRole(user);
   const { id } = await params;

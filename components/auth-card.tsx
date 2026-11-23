@@ -90,7 +90,11 @@ export function LoginForm() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    const reason = new URLSearchParams(window.location.search).get("google");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("expired") === "1") {
+      setError("Phiên đăng nhập cũ không còn. Hãy đăng nhập lại.");
+    }
+    const reason = params.get("google");
     if (!reason) return;
     const messages: Record<string, string> = {
       missing: "Chưa cấu hình Google Client ID/Secret trên server.",

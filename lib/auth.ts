@@ -1,7 +1,8 @@
+import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { ensureAdminPrivileges, syncAdminRoleByEmail, userHasAdminRole } from "@/lib/admin";
 import { prisma } from "@/lib/db";
-import { clearSessionCookie, readSession } from "@/lib/session";
+import { readSession } from "@/lib/session";
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 12);
@@ -15,15 +16,21 @@ export async function resolveMember() {
   const session = await readSession();
   if (!session || session.role !== "member") return null;
   let user = await prisma.user.findUnique({ where: { id: session.sub } });
-  if (!user) {
-    await clearSessionCookie();
-    return null;
-  }
+  if (!user) return null;
   if (userHasAdminRole(user)) {
     await ensureAdminPrivileges(user);
     user = (await prisma.user.findUnique({ where: { id: user.id } })) ?? user;
   }
   return user;
+}
+
+/** Trang server không được xóa cookie. Phiên member không còn user thì qua route xóa cookie rồi về đăng nhập. */
+export async function requireMemberPage() {
+  const session = await readSession();
+  const user = await resolveMember();
+  if (user) return user;
+  if (session?.role === "member") redirect("/api/auth/logout");
+  redirect("/login");
 }
 
 export async function memberHasPro(userId: string, plan: string) {

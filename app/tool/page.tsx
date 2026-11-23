@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { userHasAdminRole } from "@/lib/admin";
-import { memberHasPro, resolveMember } from "@/lib/auth";
+import { memberHasPro, requireMemberPage } from "@/lib/auth";
 import { resolvePageOwnerIds } from "@/lib/facebook-keys";
 import { parseStoredComments } from "@/lib/comment-items";
 import { Composer, type ComposerDraft } from "@/components/composer";
@@ -57,8 +56,7 @@ export default async function ToolPage({
 }: {
   searchParams: Promise<{ draft?: string; saved?: string }>;
 }) {
-  const user = await resolveMember();
-  if (!user) redirect("/login");
+  const user = await requireMemberPage();
   const query = await searchParams;
   const isPro = await memberHasPro(user.id, user.plan);
   const isAdmin = userHasAdminRole(user);
