@@ -1,3 +1,4 @@
+import { openAsBlob } from "fs";
 import { readFile } from "fs/promises";
 import path from "path";
 import { GRAPH, GraphError, graphRequest } from "@/lib/graph";
@@ -76,12 +77,11 @@ export async function publishVideo(input: {
   onStage?: (text: string) => void | Promise<void>;
 }) {
   const absolute = uploadAbsolute(input.filePath);
-  const bytes = await readFile(absolute);
   const form = new FormData();
   form.set("description", input.description);
   form.set("published", "true");
   form.set("access_token", input.token);
-  form.set("source", new Blob([new Uint8Array(bytes)]), path.basename(absolute));
+  form.set("source", await openAsBlob(absolute), path.basename(absolute));
 
   const result = await graphRequest(`${GRAPH}/${input.pageId}/videos`, {
     method: "POST",
