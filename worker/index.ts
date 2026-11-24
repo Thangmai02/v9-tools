@@ -375,6 +375,7 @@ function commentsForJob(job: {
 
 async function recoverStuck() {
   const cutoff = new Date(Date.now() - STUCK_MS);
+  const host = thisFileHost();
   const stuck = await prisma.postJob.findMany({
     where: { status: "running", startedAt: { lt: cutoff } },
     include: { batch: true },
@@ -384,14 +385,53 @@ async function recoverStuck() {
       await leaveIfStopped(job.id, job.batchId);
       continue;
     }
-    await note(job.id, "Lỗi đăng", "Bị gián đoạn trước khi đăng xong.", {
+    const here = job.batch.fileHost === host;
+    const message = here
+      ? "Bị gián đoạn trước khi đăng xong."
+      : "Máy đăng đã tắt trước khi bài được đăng. Bấm Đăng ngay lại.";
+    await note(job.id, "Lỗi đăng", message, {
       status: "failed",
-      error: "Bị gián đoạn trước khi đăng xong.",
+      error: message,
       finishedAt: new Date(),
     });
     await scheduleNext(job.batchId, job.batch.delaySeconds, job.id);
     await refreshBatch(job.batchId);
   }
+
+  const forgottenAt = new Date(Date.now() - 15 * 60 * 1000);
+  const forgotten = await prisma.postJob.findMany({
+    where: {
+      status: { in: POST_WAIT },
+      runAt: { lt: forgottenAt },
+      batch: { status: { notIn: ["stopped", "paused", "draft"] }, fileHost: { not: null } },
+    },
+    include: { batch: true },
+    take: 40,
+  });
+  for (const job of forgotten) {
+    const here = job.batch.fileHost === host;
+    const paths = [job.batch.videoPath, job.batch.imagePath].filter((item): item is string => Boolean(item));
+    const fileReady = paths.length === 0 || paths.every((item) => uploadExists(item));
+    if (here && fileReady) continue;
+    const message = here
+      ? "File không còn trên máy đăng. Bấm Đăng ngay lại."
+      : "Máy đăng đã tắt trước khi bài được đăng. Bấm Đăng ngay lại.";
+    await note(job.id, "Lỗi đăng", message, {
+      status: "failed",
+      error: message,
+      finishedAt: new Date(),
+    });
+    await refreshBatch(job.batchId);
+  }
+
+  await prisma.postBatch.updateMany({
+    where: {
+      status: "preparing",
+      createdAt: { lt: forgottenAt },
+      jobs: { none: {} },
+    },
+    data: { status: "stopped", completedAt: new Date() },
+  });
 }
 
 async function fileSizeNote(filePath: string) {

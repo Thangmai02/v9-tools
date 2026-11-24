@@ -1595,6 +1595,7 @@ export function Composer({
     setPending(action);
     setError("");
     setSavedNote("");
+    try {
     const saved: { id: string; status: string }[] = [];
     const doneKeys = new Set<string>();
     const runKey =
@@ -1738,6 +1739,11 @@ export function Composer({
     setSavedNote(action === "draft" ? `Đã lưu ${saved.length} nháp.` : `Đã xếp ${saved.length} bài.`);
     setPending(null);
     router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không gửi được bài.";
+      setError(message);
+      setPending(null);
+    }
   }
 
   const allSelected = pages.length > 0 && selected.length === pages.length;

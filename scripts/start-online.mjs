@@ -33,15 +33,28 @@ const web = spawn("npx", ["next", "start", "-H", "0.0.0.0", "-p", process.env.PO
   env: process.env,
 });
 
-const worker = spawn("npx", ["tsx", "worker/index.ts"], {
-  stdio: "inherit",
-  shell: true,
-  env: process.env,
-});
+let worker = null;
+let closing = false;
+
+function startWorker() {
+  worker = spawn("npx", ["tsx", "worker/index.ts"], {
+    stdio: "inherit",
+    shell: true,
+    env: process.env,
+  });
+  worker.on("exit", (code) => {
+    if (closing) return;
+    console.error(`[worker] exited ${code ?? 0}. Khởi động lại sau 2 giây.`);
+    setTimeout(startWorker, 2000);
+  });
+}
+
+startWorker();
 
 function shutdown(signal) {
+  closing = true;
   web.kill(signal);
-  worker.kill(signal);
+  worker?.kill(signal);
   process.exit(0);
 }
 
@@ -49,11 +62,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 web.on("exit", (code) => {
-  worker.kill("SIGTERM");
+  closing = true;
+  worker?.kill("SIGTERM");
   process.exit(code ?? 1);
-});
-worker.on("exit", (code) => {
-  if (code && code !== 0) {
-    console.error(`[worker] exited ${code}`);
-  }
 });
