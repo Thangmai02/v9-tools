@@ -1,5 +1,8 @@
-import { mkdir, unlink, writeFile } from "fs/promises";
+import { createWriteStream } from "fs";
+import { mkdir, unlink } from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { appendJobLog } from "@/lib/job-log";
 import { parseStoredComments, type StoredComment } from "@/lib/comment-items";
 import { prisma } from "@/lib/db";
@@ -338,7 +341,8 @@ async function writeMedia(
   const relative = portableUploadPath(`${safeStem}${extension}`);
   const absolute = uploadAbsolute(relative);
   await mkdir(path.dirname(absolute), { recursive: true });
-  await writeFile(absolute, Buffer.from(await file.arrayBuffer()));
+  const source = Readable.fromWeb(file.stream() as any);
+  await pipeline(source, createWriteStream(absolute));
   return relative;
 }
 

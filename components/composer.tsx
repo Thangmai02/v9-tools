@@ -22,7 +22,9 @@ const WAKING = "Máy online đang mở lại. Đợi khoảng nửa phút rồi 
 
 async function readApi(response: Response): Promise<any> {
   const text = await response.text();
-  if (!text) return {};
+  if (!text.trim()) {
+    throw new Error(response.status >= 500 ? WAKING : "Máy online ngắt khi nhận file. Bấm Đăng ngay lại.");
+  }
   try {
     return JSON.parse(text);
   } catch {
