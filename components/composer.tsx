@@ -18,6 +18,21 @@ import {
   StatusBadge,
 } from "@/components/ui";
 
+const WAKING = "Máy online đang mở lại. Đợi khoảng nửa phút rồi bấm Đăng ngay lại.";
+
+async function readApi(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (response.status === 502 || response.status === 503 || text.trimStart().startsWith("<")) {
+      throw new Error(WAKING);
+    }
+    throw new Error("Không đọc được phản hồi từ máy online.");
+  }
+}
+
 export type ComposerPage = {
   id: string;
   name: string;
@@ -1048,11 +1063,12 @@ function PageProgressPanel({
     let timer = 0;
 
     async function load() {
+      try {
       const ids = watchKey ? watchKey.split(",") : [];
       const payloads = await Promise.all(
         ids.map(async (id) => {
           const response = await fetch(`/api/batches/${id}`);
-          const data = await response.json();
+          const data = await readApi(response);
           return response.ok ? data : null;
         }),
       );
@@ -1184,6 +1200,9 @@ function PageProgressPanel({
         setThreads(threadRows(allJobs));
         timer = window.setTimeout(load, 1000);
       } else setThreads([]);
+      } catch {
+        if (!stop) timer = window.setTimeout(load, 3000);
+      }
     }
 
     load();
@@ -1667,7 +1686,7 @@ export function Composer({
         form.set("clearCover", "1");
       }
       const response = await fetch("/api/batches", { method: "POST", body: form });
-      const data = await response.json();
+      const data = await readApi(response);
       if (!response.ok) {
         failed = `${item?.name ? `${item.name}: ` : ""}${data.error || "Không lưu được bài."}`;
         return;
