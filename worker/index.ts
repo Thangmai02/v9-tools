@@ -17,7 +17,7 @@ import {
   uploadAbsolute,
 } from "@/lib/publish";
 
-const STUCK_MS = 15 * 60 * 1000;
+const STUCK_MS = 90 * 60 * 1000;
 const POST_WAIT = ["pending", "queued"];
 const COMMENT_WAIT = ["pending", "waiting"];
 const REACTION_WAIT = ["pending", "waiting"];
@@ -423,15 +423,6 @@ async function recoverStuck() {
     });
     await refreshBatch(job.batchId);
   }
-
-  await prisma.postBatch.updateMany({
-    where: {
-      status: "preparing",
-      createdAt: { lt: forgottenAt },
-      jobs: { none: {} },
-    },
-    data: { status: "stopped", completedAt: new Date() },
-  });
 }
 
 async function fileSizeNote(filePath: string) {
